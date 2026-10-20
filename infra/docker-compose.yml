@@ -1,0 +1,46 @@
+# Entorno local de GasLogix: MySQL + backend.
+# Uso: desde infra/, copiar .env.example a .env y ejecutar `docker compose up -d --build`.
+name: gaslogix
+
+services:
+  db:
+    image: mysql:8.4
+    container_name: gaslogix-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: gaslogix
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+      TZ: America/Argentina/Buenos_Aires
+    ports:
+      - "${DB_HOST_PORT:-3306}:3306"
+    volumes:
+      - gaslogix-db-data:/var/lib/mysql
+      # Solo se ejecutan la primera vez, con el volumen vacío
+      - ../backend/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ../backend/db/data.sql:/docker-entrypoint-initdb.d/02-data.sql:ro
+    healthcheck:
+      # Por TCP: durante la inicialización MySQL corre sin red, así que esto
+      # recién responde cuando los scripts ya terminaron
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  backend:
+    build: ../backend
+    container_name: gaslogix-backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      TZ: America/Argentina/Buenos_Aires
+    ports:
+      - "${BACKEND_HOST_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  gaslogix-db-data:
