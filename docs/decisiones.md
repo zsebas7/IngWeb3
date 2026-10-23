@@ -39,6 +39,33 @@ ar.com.gaslogix
 
 Se toma como referencia https://github.com/magm3333/iw3_2026 (capas, excepciones con `@Builder`, `StandartResponse`, `Constants`, deserializador con `JsonUtiles`). No se usa la herencia de entidades por cliente (`ProductCli1 extends Product`) porque cada tabla ya tiene `codigo_externo`.
 
+## Flujo de trabajo con Git
+
+- `main`: versión estable. Solo se actualiza desde `develop`, y ese merge lo hace el grupo personalmente.
+- `develop`: rama de integración, creada desde `main`.
+- Una rama por ticket, creada desde `develop`, con el nombre `ticket-NN-descripcion` (por ejemplo, `ticket-01-base-comun`).
+- Al terminar un ticket se abre un Pull Request de la rama del ticket hacia `develop`.
+
+## Tickets
+
+- Los tickets del segundo parcial están en `.scratch/segundo-parcial/issues/`, uno por archivo, con responsable, esfuerzo, bloqueos y criterios de aceptación.
+- Se generaron con la skill `to-tickets`, que no se versiona.
+- Su avance se sigue en un tablero compartido en claude.ai. Si se modifica un ticket en el repo, hay que actualizar también el tablero.
+
+## Manejo de errores
+
+- Cada controller captura las excepciones de negocio con `try/catch` y arma la respuesta con `StandartResponse`, igual que el repo de referencia. No se usa un handler global (`@RestControllerAdvice`).
+- Excepciones (en inglés, como el repo de referencia), cada una con un único `@Builder (message, ex)`:
+
+  | Excepción | Código HTTP | Uso |
+  | --- | --- | --- |
+  | `BusinessException` | 500 | Error inesperado de lógica o de acceso a la BD |
+  | `NotFoundException` | 404 | Entidad inexistente |
+  | `FoundException` | 409 | Entidad duplicada |
+  | `InvalidStateException` | 409 | La orden no está en el estado requerido |
+  | `BadRequestException` | 400 | Datos inválidos o incompletos |
+  | `BadPasswordException` | 401 | Contraseña de activación incorrecta |
+
 ## Estados de la orden
 
 Constantes `int` en `Constants.java`: `ESTADO_PENDIENTE_PESAJE_INICIAL = 1`, `ESTADO_CON_PESAJE_INICIAL = 2`, `ESTADO_CERRADA_PARA_CARGA = 3`, `ESTADO_FINALIZADA = 4`.
