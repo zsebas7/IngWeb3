@@ -21,8 +21,10 @@ Registro de las decisiones tomadas antes de implementar. Si alguna cambia, actua
 ```
 ar.com.gaslogix
 ├── GaslogixApplication
-├── auth/                 Usuario, Rol, repositorios, UserBusiness, filtro JWT
-├── security/             SecurityConfiguration
+├── auth/                 Usuario, Rol, UsuarioRepository, UsuarioBusiness, JwtService, DTOs de login,
+│   ├── custom/           CustomAuthenticationManager
+│   └── filters/          JWTAuthorizationFilter
+├── security/             SecurityConfiguration, JsonSecurityErrorHandler (401/403)
 ├── config/               OpenApiConfig
 ├── controllers/          Constants, BaseRestController, AuthRestController,
 │                         OrdenRestController   (1 recepción, 4 cierre, conciliación)
@@ -51,6 +53,14 @@ Se toma como referencia https://github.com/magm3333/iw3_2026 (capas, excepciones
 - Los tickets del segundo parcial están en `.scratch/segundo-parcial/issues/`, uno por archivo, con responsable, esfuerzo, bloqueos y criterios de aceptación.
 - Se generaron con la skill `to-tickets`, que no se versiona.
 - Su avance se sigue en un tablero compartido en claude.ai. Si se modifica un ticket en el repo, hay que actualizar también el tablero.
+- Reasignación: Leonel toma el ticket 02 y Valentina el 07; el reparto queda en 5 puntos por integrante:
+
+  | Integrante | Tickets |
+  | --- | --- |
+  | Leonel Ruiz Notari | 01, 02 |
+  | Valentina Beas | 07, 09 |
+  | Mirko Bubica | 03, 05, 06 |
+  | Sebastián Caparroz | 04, 08, 10 |
 
 ## Manejo de errores
 
@@ -79,6 +89,20 @@ Cada transición se registra en `orden_estado_log`, en la misma transacción.
 - Usuarios precargados: `admin` (ADMIN), `operador` (OPERADOR) y `caudalimetro` (OPERADOR, usuario técnico del sistema de carga).
 - Todas las acciones las realiza un **operador logueado**: recepción de la orden de SAP, pesajes, validación de contraseña (3.a) y cierre. Su id queda en `orden_estado_log.id_usuario`.
 - El caudalímetro se autentica para enviar lecturas (3.b). Como eso no cambia el estado, no aparece en el log.
+
+### Login y token (ticket 02)
+
+- `POST /api/v1/login` (público) recibe JSON `{"username", "password"}`. Solo se inicia sesión con username, no con email.
+- Respuesta exitosa: `{"token", "username", "roles"}`. Credenciales faltantes → **400**; incorrectas, usuario inexistente o cuenta deshabilitada/bloqueada/vencida → **401**.
+- Para no revelar qué usuarios existen, "usuario inexistente" y "contraseña incorrecta" devuelven el mismo mensaje. El estado de la cuenta se informa solo si la contraseña es correcta.
+- El token (HMAC-SHA256) lleva el username (`sub`), el `id`, los `roles` y vence a las **8 horas** (`jwt.expiracion-horas`).
+- La clave de firma se lee de la variable de entorno `JWT_SECRET`, con un valor de desarrollo por defecto en `application.properties`. Con Docker es obligatoria en `infra/.env`: **quien tenga un `.env` anterior debe copiar la línea `JWT_SECRET` de `.env.example`**.
+- Cada request trae `Authorization: Bearer <token>`. El filtro JWT valida el token y recarga el usuario de la BD, así un usuario deshabilitado pierde el acceso en el siguiente request.
+- Los 401 y 403 de Spring Security también responden con `StandartResponse`. El 401 indica el motivo (falta el token, token inválido, token vencido).
+- Rutas públicas: el login, Swagger (`/swagger-ui.html`, `/v3/api-docs/**`) y `/error`. Todo lo demás requiere token.
+- Los endpoints se restringen por rol con `@PreAuthorize("hasRole('OPERADOR')")` (Spring agrega el prefijo `ROLE_`).
+- Los controllers heredan de `BaseRestController` y obtienen el usuario logueado con `getUserLogged()`.
+- `/api/v1/prueba-auth` es un endpoint temporal para probar roles; en el ticket 10 se decide si queda.
 
 ## 1. Recepción de la orden
 
