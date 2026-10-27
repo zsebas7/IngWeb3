@@ -1,6 +1,6 @@
 # 07: Recepción de datos de carga en tiempo real (3.b)
 
-**Responsable:** Leonel Ruiz Notari · **Esfuerzo:** L (3)
+**Responsable:** Valentina Beas · **Esfuerzo:** L (3)
 
 **What to build:** el caudalímetro (usuario técnico autenticado) envía lecturas de una orden identificada solo por su número: masa acumulada (kg), densidad, temperatura (°C) y caudal (kg/h). Cada lectura válida actualiza los últimos valores de la orden; además se guarda en el detalle de carga solo si pasó la frecuencia configurada desde el último detalle guardado.
 

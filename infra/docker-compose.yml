@@ -35,6 +35,8 @@ services:
       DB_PORT: 3306
       DB_USER: ${DB_USER}
       DB_PASS: ${DB_PASS}
+      # Si falta en .env, compose avisa en lugar de arrancar con una clave vacía
+      JWT_SECRET: ${JWT_SECRET:?Falta JWT_SECRET en infra/.env (copiarlo de .env.example)}
       TZ: America/Argentina/Buenos_Aires
     ports:
       - "${BACKEND_HOST_PORT:-8080}:8080"
