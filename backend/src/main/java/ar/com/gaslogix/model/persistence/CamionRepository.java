@@ -12,4 +12,7 @@ public interface CamionRepository extends JpaRepository<Camion, Long> {
 
 	// SELECT ... FROM camion WHERE codigo_externo = ?
 	Optional<Camion> findByCodigoExterno(String codigoExterno);
+
+	// SELECT ... FROM camion WHERE patente = ?  (identificador alternativo; la patente es única)
+	Optional<Camion> findByPatente(String patente);
 }

@@ -80,6 +80,9 @@ public class OrdenBusiness implements IOrdenBusiness {
 			return orden;
 		} catch (BadRequestException e) {
 			throw e;
+		} catch (FoundException e) {
+			// Conflicto al sincronizar (patente o documento de otra entidad) → 409, no 500
+			throw e;
 		} catch (Exception e) {
 			log.error(e.getMessage(), e);
 			throw BusinessException.builder().ex(e).build();
@@ -135,68 +138,116 @@ public class OrdenBusiness implements IOrdenBusiness {
 		}
 	}
 
-	/*
-	 * obtenerOCrear...: si viene con un código externo que ya está en la BD, se reutiliza la entidad existente
-	 * (sin actualizarla). Si no, se valida que traiga los datos obligatorios y se crea.
-	 * El ticket 04 amplía estos métodos (sincronizar datos, buscar por patente/documento/etc.).
-	 */
-
-	private Camion obtenerOCrearCamion(Camion camion) throws BadRequestException {
-		if (camion.getCodigoExterno() != null) {
-			Optional<Camion> existente = camionDAO.findByCodigoExterno(camion.getCodigoExterno());
-			if (existente.isPresent()) {
-				return existente.get();
-			}
-		}
+	private Camion obtenerOCrearCamion(Camion camion) throws BadRequestException, FoundException {
 		if (camion.getPatente() == null) {
 			throw BadRequestException.builder().message("Falta la patente del camión").build();
+		}
+		if (camion.getCisternas().isEmpty()) {
+			throw BadRequestException.builder().message("El camión necesita al menos una cisterna").build();
 		}
 		for (Cisterna c : camion.getCisternas()) {
 			if (c.getNombre() == null || c.getCapacidadLitros() == null) {
 				throw BadRequestException.builder().message("Cada cisterna necesita nombre y capacidad en litros").build();
 			}
 		}
-		// cascade = ALL: guarda también las cisternas
-		return camionDAO.save(camion);
+
+		Optional<Camion> conPatente = camionDAO.findByPatente(camion.getPatente());
+		Optional<Camion> existente = camion.getCodigoExterno() != null
+				? camionDAO.findByCodigoExterno(camion.getCodigoExterno())
+				: conPatente;
+
+		// La patente es única: si ya la tiene otro camión (distinto del que se sincroniza) → 409
+		if (conPatente.isPresent() && (existente.isEmpty() || !conPatente.get().getId().equals(existente.get().getId()))) {
+			throw FoundException.builder().message("La patente " + camion.getPatente() + " pertenece a otro camión").build();
+		}
+
+		if (existente.isEmpty()) {
+			// cascade = ALL: guarda también las cisternas
+			return camionDAO.save(camion);
+		}
+
+		Camion c = existente.get();
+		c.setPatente(camion.getPatente());
+		c.setDescripcion(camion.getDescripcion());
+		// Se reemplazan todas las cisternas: clear() + orphanRemoval borra las viejas.
+		// No usar setCisternas(otraLista): con orphanRemoval Hibernate exige conservar la misma lista
+		c.getCisternas().clear();
+		for (Cisterna cisterna : camion.getCisternas()) {
+			cisterna.setCamion(c);
+			c.getCisternas().add(cisterna);
+		}
+		return camionDAO.save(c);
 	}
 
-	private Chofer obtenerOCrearChofer(Chofer chofer) throws BadRequestException {
-		if (chofer.getCodigoExterno() != null) {
-			Optional<Chofer> existente = choferDAO.findByCodigoExterno(chofer.getCodigoExterno());
-			if (existente.isPresent()) {
-				return existente.get();
-			}
+	private Chofer obtenerOCrearChofer(Chofer chofer) throws BadRequestException, FoundException {
+		if (chofer.getCodigoExterno() == null && chofer.getDocumento() == null) {
+			throw BadRequestException.builder().message("El chofer necesita código externo o documento").build();
 		}
 		if (chofer.getNombre() == null || chofer.getApellido() == null) {
 			throw BadRequestException.builder().message("Faltan el nombre o el apellido del chofer").build();
 		}
-		return choferDAO.save(chofer);
+
+		Optional<Chofer> conDocumento = chofer.getDocumento() != null
+				? choferDAO.findByDocumento(chofer.getDocumento())
+				: Optional.empty();
+		Optional<Chofer> existente = chofer.getCodigoExterno() != null
+				? choferDAO.findByCodigoExterno(chofer.getCodigoExterno())
+				: conDocumento;
+
+		// El documento es único: si ya lo tiene otro chofer (distinto del que se sincroniza) → 409
+		if (conDocumento.isPresent() && (existente.isEmpty() || !conDocumento.get().getId().equals(existente.get().getId()))) {
+			throw FoundException.builder().message("El documento " + chofer.getDocumento() + " pertenece a otro chofer").build();
+		}
+
+		if (existente.isEmpty()) {
+			return choferDAO.save(chofer);
+		}
+
+		Chofer c = existente.get();
+		c.setNombre(chofer.getNombre());
+		c.setApellido(chofer.getApellido());
+		c.setDocumento(chofer.getDocumento());
+		return choferDAO.save(c);
 	}
 
 	private Cliente obtenerOCrearCliente(Cliente cliente) throws BadRequestException {
-		if (cliente.getCodigoExterno() != null) {
-			Optional<Cliente> existente = clienteDAO.findByCodigoExterno(cliente.getCodigoExterno());
-			if (existente.isPresent()) {
-				return existente.get();
-			}
+		// La razón social no es única, así que el cliente solo se identifica por código externo
+		if (cliente.getCodigoExterno() == null) {
+			throw BadRequestException.builder().message("Falta el código externo del cliente").build();
 		}
 		if (cliente.getRazonSocial() == null) {
 			throw BadRequestException.builder().message("Falta la razón social del cliente").build();
 		}
-		return clienteDAO.save(cliente);
+
+		Optional<Cliente> existente = clienteDAO.findByCodigoExterno(cliente.getCodigoExterno());
+		if (existente.isEmpty()) {
+			return clienteDAO.save(cliente);
+		}
+
+		Cliente c = existente.get();
+		c.setRazonSocial(cliente.getRazonSocial());
+		c.setContacto(cliente.getContacto());
+		return clienteDAO.save(c);
 	}
 
 	private Producto obtenerOCrearProducto(Producto producto) throws BadRequestException {
-		if (producto.getCodigoExterno() != null) {
-			Optional<Producto> existente = productoDAO.findByCodigoExterno(producto.getCodigoExterno());
-			if (existente.isPresent()) {
-				return existente.get();
-			}
+		// El nombre no es único, así que el producto solo se identifica por código externo
+		if (producto.getCodigoExterno() == null) {
+			throw BadRequestException.builder().message("Falta el código externo del producto").build();
 		}
 		if (producto.getNombre() == null) {
 			throw BadRequestException.builder().message("Falta el nombre del producto").build();
 		}
-		return productoDAO.save(producto);
+
+		Optional<Producto> existente = productoDAO.findByCodigoExterno(producto.getCodigoExterno());
+		if (existente.isEmpty()) {
+			return productoDAO.save(producto);
+		}
+
+		Producto p = existente.get();
+		p.setNombre(producto.getNombre());
+		p.setDescripcion(producto.getDescripcion());
+		return productoDAO.save(p);
 	}
 
 	// Auditoría: quién cambió el estado, cuándo y de cuál a cuál (los tickets 05 a 09 repiten este patrón)

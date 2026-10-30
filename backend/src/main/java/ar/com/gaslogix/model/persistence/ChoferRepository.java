@@ -12,4 +12,7 @@ public interface ChoferRepository extends JpaRepository<Chofer, Long> {
 
 	// SELECT ... FROM chofer WHERE codigo_externo = ?
 	Optional<Chofer> findByCodigoExterno(String codigoExterno);
+
+	// SELECT ... FROM chofer WHERE documento = ?  (identificador alternativo; el documento es único)
+	Optional<Chofer> findByDocumento(String documento);
 }
