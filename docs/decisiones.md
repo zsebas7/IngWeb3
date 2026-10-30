@@ -162,3 +162,38 @@ Cada transición se registra en `orden_estado_log`, en la misma transacción.
 | 403 | Rol sin permiso |
 | 404 | Orden inexistente |
 | 409 | Estado inválido o duplicado |
+
+---
+
+# Decisiones por ticket
+
+Cada ticket agrega acá las decisiones que tomó durante el desarrollo y cuáles afectan a tickets futuros.
+
+## Ticket 03 · Recepción de orden con entidades nuevas (Mirko Bubica)
+
+### Decisiones
+
+- **Entidades** en `model/`: `Camion`, `Cisterna`, `Chofer`, `Cliente`, `Producto`, `Orden`, `OrdenEstadoLog`, mapeadas columna por columna contra `schema.sql` (`ddl-auto=validate`).
+  - Fechas con `LocalDateTime`; montos y medidas con `BigDecimal` (`precision`/`scale` iguales al `DECIMAL` del esquema).
+  - `estado`, `estado_anterior` y `estado_nuevo` con `columnDefinition = "TINYINT"`. `estadoAnterior` es `Integer` porque es NULL al crear la orden.
+  - `Camion` → `Cisterna`: `@OneToMany(mappedBy = "camion", cascade = CascadeType.ALL)`; al guardar el camión se guardan sus cisternas. `Cisterna.camion` lleva `@JsonIgnore` para evitar un bucle al convertir a JSON.
+  - `Orden` → camión, chofer, cliente y producto: `@ManyToOne` con `@JoinColumn` (`id_camion`, etc.).
+  - `OrdenEstadoLog.usuario` es `@ManyToOne` a `auth.Usuario` (el usuario logueado de `getUserLogged()`).
+- **Endpoint** `POST /api/v1/ordenes` (`Constants.URL_ORDENES`), solo `ROLE_OPERADOR` o `ROLE_ADMIN`. Recibe el JSON crudo (`HttpEntity<String>`) y responde **201** con `Location: /api/v1/ordenes/{numeroOrden}`.
+- **JSON de SAP** en camelCase: `numeroOrden`, `codigoExterno`, `camion` (con `cisternas[]`), `chofer`, `cliente`, `producto`, `fechaCargaPrevista` (`yyyy-MM-ddTHH:mm:ss`, hora de Argentina) y `preset`. `OrdenJsonDeserializer` + `JsonUtiles` aceptan nombres alternativos.
+  - Nombres alternativos aceptados (por ejemplo `numero_orden`/`orderNumber`, `truck`, `driver`, `customer`, `product`, `dominio`/`plate`, `tanks`): la lista completa está en las constantes de `OrdenJsonDeserializer`.
+  - **Formato de fecha:** solo ISO-8601 **sin zona horaria** (`2026-11-05T08:00:00`, hora de Argentina), con `LocalDateTime.parse`. **Pendiente para cuando haya frontend:** JavaScript manda las fechas con `toISOString()` en UTC (`2026-11-05T11:00:00.000Z`), que hoy da 400. En ese momento hay que aceptar también fechas con zona (`Z` o `-03:00`) y convertirlas a la hora de Argentina; el cambio va solo en `OrdenJsonDeserializer`.
+  - El deserializador **solo arma los objetos** (no consulta la BD): si falta un dato lo deja en `null` y `OrdenBusiness` decide el 400. Números con decimales se leen como `BigDecimal`; `numeroOrden` solo se acepta si es entero.
+- `numeroOrden` es **obligatorio** (aclaración del profe); el `codigoExterno` de la orden es opcional.
+- **Validaciones:** 400 si falta `numeroOrden`, `preset`, `fechaCargaPrevista` o alguna entidad, si el `preset` no es mayor a 0, si la fecha de carga prevista es pasada o si el JSON es inválido. 409 si se repite `numeroOrden`, o el `codigoExterno` de la orden cuando no es NULL.
+  - Al **crear** una entidad nueva también es 400 si le falta un dato `NOT NULL` del esquema: patente del camión, nombre y capacidad de cada cisterna, nombre y apellido del chofer, razón social del cliente y nombre del producto. Si la entidad se reutiliza por código externo, no se exigen.
+- **Entidades existentes:** si vienen con un código externo que ya está en la BD, se **reutilizan sin actualizar**; si no existen (o no traen código externo), se crean. Cada entidad se resuelve en su propio método de `OrdenBusiness` (`obtenerOCrearCamion`, `obtenerOCrearChofer`, `obtenerOCrearCliente`, `obtenerOCrearProducto`).
+- **Se busca primero por código externo** porque es el identificador de integración que garantiza SAP (único y estable); razón social y nombre no son únicos en el esquema y el documento es opcional. La búsqueda por **identificador alternativo** cuando no viene el código externo (patente, documento, razón social, nombre) **queda para el ticket 04** (acordado en grupo, opción A).
+- **Hueco conocido hasta el ticket 04:** si llega dos veces una entidad con un `UNIQUE` propio (por ejemplo, la patente del camión) **sin** código externo, la segunda vez se intenta crear y falla con 500.
+- **Transacción única** (`@Transactional(rollbackFor = Exception.class)`): entidades + orden en estado 1 con fecha de recepción + log NULL → 1 con el usuario logueado. El `rollbackFor` es necesario porque nuestras excepciones son *checked* (`extends Exception`) y Spring, por defecto, solo hace rollback con `RuntimeException`.
+
+### Impacto en otros tickets
+
+- **04 (sincronización):** la sincronización completa va dentro de los métodos `obtenerOCrear...` de `OrdenBusiness` (actualizar datos, buscar por identificador alternativo, reemplazar cisternas). Para reemplazar las cisternas conviene agregar `orphanRemoval = true` en `Camion.cisternas`. Hoy un choque de `unique` (por ejemplo, una patente repetida) termina en 500; el 04 lo convierte en 409/400.
+- **05, 06, 07, 08, 09:** buscar la orden con `OrdenRepository.findByNumeroOrden` (los endpoints usan el número de orden, no el id interno). Registrar cada transición en `orden_estado_log` igual que en el 03 (estado anterior, nuevo, fecha, usuario logueado) y dentro de la misma transacción, con `@Transactional(rollbackFor = Exception.class)`. La entidad `Orden` ya tiene todas las columnas de los puntos 2 a 5.
+- **10 (Postman):** el request de Postman del punto 1 se arma en el 10 (acordado en grupo); el JSON de ejemplo está en Swagger (`OrdenRestController.EJEMPLO_ORDEN`). En el 10 también va la prueba de roles: un usuario sin rol OPERADOR ni ADMIN recibe 403 en `POST /api/v1/ordenes`.
