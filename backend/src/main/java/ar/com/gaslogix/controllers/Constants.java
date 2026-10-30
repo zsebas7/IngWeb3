@@ -11,6 +11,7 @@ public final class Constants {
 	public static final String URL_BASE = URL_API + URL_API_VERSION;
 
 	public static final String URL_LOGIN = URL_BASE + "/login";
+	public static final String URL_ORDENES = URL_BASE + "/ordenes";
 
 	// Estados de la orden
 	public static final int ESTADO_PENDIENTE_PESAJE_INICIAL = 1;
