@@ -35,6 +35,7 @@ public class Chofer {
 	@Column(length = 100, nullable = false)
 	private String apellido;
 
-	@Column(length = 20)
+	// Identificador alternativo cuando no viene el código externo
+	@Column(length = 20, unique = true)
 	private String documento;
 }

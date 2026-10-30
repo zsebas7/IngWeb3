@@ -110,12 +110,12 @@ Cada transición se registra en `orden_estado_log`, en la misma transacción.
   | Entidad | Identificador alternativo |
   | --- | --- |
   | Camión | patente |
-  | Chofer | documento |
-  | Cliente | razón social |
-  | Producto | nombre |
+  | Chofer | documento (único) |
+  | Cliente | ninguno: el código externo es obligatorio (la razón social no es única) |
+  | Producto | ninguno: el código externo es obligatorio (el nombre no es único) |
 
   Si faltan el código externo y el identificador alternativo → **400**.
-- Si el código externo del camión existe pero la patente recibida pertenece a otro camión → **409**.
+- Si la patente recibida pertenece a otro camión → **409** (venga o no el código externo). Lo mismo con el documento del chofer.
 - Cisternas: se reemplaza la lista completa del camión por la recibida.
 - `orden.codigo_externo` es un código opcional del cliente, distinto de `numero_orden`; queda NULL si el cliente solo usa el número.
 - Orden duplicada → **409** si se repite `numero_orden`, o `codigo_externo` cuando no es NULL.
@@ -195,3 +195,25 @@ Cada ticket agrega acá las decisiones que tomó durante el desarrollo y cuáles
 - **04 (sincronización):** la sincronización completa va dentro de los métodos `obtenerOCrear...` de `OrdenBusiness` (actualizar datos, buscar por identificador alternativo, reemplazar cisternas). Para reemplazar las cisternas conviene agregar `orphanRemoval = true` en `Camion.cisternas`. Hoy un choque de `unique` (por ejemplo, una patente repetida) termina en 500; el 04 lo convierte en 409/400.
 - **05, 06, 07, 08, 09:** buscar la orden con `OrdenRepository.findByNumeroOrden` (los endpoints usan el número de orden, no el id interno). Registrar cada transición en `orden_estado_log` igual que en el 03 (estado anterior, nuevo, fecha, usuario logueado) y dentro de la misma transacción, con `@Transactional(rollbackFor = Exception.class)`. La entidad `Orden` ya tiene todas las columnas de los puntos 2 a 5.
 - **10 (Postman):** el request de Postman del punto 1 se arma en el 10 (acordado en grupo); el JSON de ejemplo está en Swagger (`OrdenRestController.EJEMPLO_ORDEN`). En el 10 también va la prueba de roles: un usuario sin rol OPERADOR ni ADMIN recibe 403 en `POST /api/v1/ordenes`.
+
+## Ticket 04 · Sincronización de entidades existentes (Sebastián Caparroz)
+
+### Decisiones
+
+- La sincronización está en los métodos `obtenerOCrear...` de `OrdenBusiness`. Reemplaza el comportamiento del ticket 03 ("se reutilizan sin actualizar"): ahora una entidad existente **se actualiza con los datos recibidos**.
+- **Búsqueda** (acordado en grupo):
+  - Camión: por código externo; si no viene, por patente (`CamionRepository.findByPatente`).
+  - Chofer: por código externo; si no viene, por documento (`ChoferRepository.findByDocumento`). Sin ninguno de los dos → **400**.
+  - Cliente y producto: **código externo obligatorio** (→ **400** si falta), porque razón social y nombre no son únicos.
+- **`chofer.documento` pasa a ser único** (`chofer_documento_unique` en `schema.sql` y `unique = true` en `Chofer`). MySQL permite varios NULL en un `UNIQUE`. La restricción se aplica al recrear la base (`docker compose down -v`); la lógica no depende de ella porque el conflicto se controla antes de guardar.
+- **Conflictos → 409** (`FoundException`), controlados en el negocio antes del `save` para no depender del error de la BD (que daría 500):
+  - la patente recibida pertenece a otro camión: tanto si el camión se encontró por código externo como si el código externo es nuevo;
+  - el documento recibido pertenece a otro chofer (mismo criterio).
+- **Actualización:** se pisan los datos con lo recibido, incluso con `null` en los opcionales (descripción, contacto, documento si el chofer tiene código externo). Los obligatorios del esquema se exigen siempre, al crear y al actualizar (→ **400**). El código externo de una entidad existente no se modifica.
+- **Cisternas:** se reemplazan por completo con `getCisternas().clear()` + `orphanRemoval = true` en `Camion.cisternas`. No se usa `setCisternas(otraLista)`: con `orphanRemoval` Hibernate exige conservar la misma colección. Un camión sin cisternas → **400** (al crear y al actualizar).
+- `recibirOrden` relanza `FoundException` en su `catch`; antes cualquier excepción que no fuera `BadRequestException` terminaba en 500.
+- Sigue siendo **una sola transacción** (`@Transactional(rollbackFor = Exception.class)` del ticket 03): ante un 400/409 no queda guardada ninguna entidad sincronizada ni la orden.
+
+### Impacto en otros tickets
+
+- **10 (Postman):** requests de sincronización: entidad existente actualizada, entidad sin identificador (400) y conflicto de patente (409). Todos los clientes y productos del JSON deben traer `codigoExterno`.

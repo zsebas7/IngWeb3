@@ -67,7 +67,7 @@ public class OrdenRestController extends BaseRestController {
 					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
 			@ApiResponse(responseCode = "403", description = "El usuario no tiene rol OPERADOR ni ADMIN.", content = {
 					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
-			@ApiResponse(responseCode = "409", description = "Ya existe una orden con ese número o código externo.", content = {
+			@ApiResponse(responseCode = "409", description = "Ya existe una orden con ese número o código externo, o la patente/documento recibido pertenece a otro camión/chofer.", content = {
 					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
 			@ApiResponse(responseCode = "500", description = "Error interno.", content = {
 					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }) })

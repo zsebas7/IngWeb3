@@ -41,7 +41,8 @@ public class Camion {
 	@Column(length = 255)
 	private String descripcion;
 
-	// La FK está en cisterna (id_camion). CascadeType.ALL: al guardar el camión se guardan también sus cisternas
-	@OneToMany(mappedBy = "camion", cascade = CascadeType.ALL)
+	// La FK está en cisterna (id_camion). CascadeType.ALL: al guardar el camión se guardan también sus cisternas.
+	// orphanRemoval: una cisterna que se saca de la lista se borra de la BD (así se reemplazan al sincronizar)
+	@OneToMany(mappedBy = "camion", cascade = CascadeType.ALL, orphanRemoval = true)
 	private List<Cisterna> cisternas = new ArrayList<>();
 }
