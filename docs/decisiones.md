@@ -43,18 +43,16 @@ Se toma como referencia https://github.com/magm3333/iw3_2026 (capas, excepciones
 
 ## Flujo de trabajo con Git
 
-- `main`: versión estable. Solo se actualiza desde `develop`, y ese merge lo hace el grupo personalmente.
+- `main`: versión estable. Solo se actualiza desde `develop`.
 - `develop`: rama de integración, creada desde `main`.
 - Una rama por ticket, creada desde `develop`, con el nombre `ticket-NN-descripcion` (por ejemplo, `ticket-01-base-comun`).
 - Al terminar un ticket se abre un Pull Request de la rama del ticket hacia `develop`.
 
 ## Tickets
 
-- Los tickets del segundo parcial están en `.scratch/segundo-parcial/issues/`, uno por archivo, con responsable, esfuerzo, bloqueos y criterios de aceptación.
+- Los tickets del segundo parcial están en `.scratch/segundo-parcial/issues/`, uno por archivo.
 - Se generaron con la skill `to-tickets`, que no se versiona.
-- Su avance se sigue en un tablero compartido en claude.ai. Si se modifica un ticket en el repo, hay que actualizar también el tablero.
-- Reasignación: Leonel toma el ticket 02 y Valentina el 07; el reparto queda en 5 puntos por integrante:
-
+  
   | Integrante | Tickets |
   | --- | --- |
   | Leonel Ruiz Notari | 01, 02 |
@@ -64,8 +62,8 @@ Se toma como referencia https://github.com/magm3333/iw3_2026 (capas, excepciones
 
 ## Manejo de errores
 
-- Cada controller captura las excepciones de negocio con `try/catch` y arma la respuesta con `StandartResponse`, igual que el repo de referencia. No se usa un handler global (`@RestControllerAdvice`).
-- Excepciones (en inglés, como el repo de referencia), cada una con un único `@Builder (message, ex)`:
+- Cada controller captura las excepciones de negocio con `try/catch` y arma la respuesta con `StandartResponse`. No se usa un handler global (`@RestControllerAdvice`).
+- Excepciones (en inglés), cada una con un único `@Builder (message, ex)`:
 
   | Excepción | Código HTTP | Uso |
   | --- | --- | --- |
@@ -83,7 +81,7 @@ Cada transición se registra en `orden_estado_log`, en la misma transacción.
 
 ## Seguridad
 
-- Login con JWT desde el segundo parcial.
+- Login con JWT.
 - Tablas `usuario`, `rol` y `usuario_rol` (N:M). Los flags de cuenta (`enabled`, `account_non_expired`, ...) mantienen los nombres de `UserDetails` de Spring Security.
 - Roles: `ROLE_ADMIN` y `ROLE_OPERADOR`.
 - Usuarios precargados: `admin` (ADMIN), `operador` (OPERADOR) y `caudalimetro` (OPERADOR, usuario técnico del sistema de carga).
