@@ -29,7 +29,7 @@ ar.com.gaslogix
 ├── controllers/          Constants, BaseRestController, AuthRestController,
 │                         OrdenRestController   (1 recepción, 4 cierre, conciliación)
 │                         PesajeRestController  (2 pesaje inicial, 5 pesaje final)
-│                         CargaRestController   (3.a contraseña, 3.b detalle)
+│                         CargaRestController   (3.b datos de carga)
 ├── business/             Interfaces IXxxBusiness + implementaciones (lógica y máquina de estados)
 │   └── exception/        BusinessException, NotFoundException, FoundException, ...
 ├── model/                Entidades JPA
@@ -83,10 +83,10 @@ Cada transición se registra en `orden_estado_log`, en la misma transacción.
 
 - Login con JWT.
 - Tablas `usuario`, `rol` y `usuario_rol` (N:M). Los flags de cuenta (`enabled`, `account_non_expired`, ...) mantienen los nombres de `UserDetails` de Spring Security.
-- Roles: `ROLE_ADMIN` y `ROLE_OPERADOR`.
-- Usuarios precargados: `admin` (ADMIN), `operador` (OPERADOR) y `caudalimetro` (OPERADOR, usuario técnico del sistema de carga).
-- Todas las acciones las realiza un **operador logueado**: recepción de la orden de SAP, pesajes, validación de contraseña (3.a) y cierre. Su id queda en `orden_estado_log.id_usuario`.
-- El caudalímetro se autentica para enviar lecturas (3.b). Como eso no cambia el estado, no aparece en el log.
+- Roles: `ROLE_ADMIN`, `ROLE_OPERADOR` y `ROLE_INTEGRATION` (sistemas externos que se conectan por API; hoy, solo el caudalímetro).
+- Usuarios precargados: `admin` (ADMIN), `operador` (OPERADOR) y `caudalimetro` (solo INTEGRATION, usuario técnico del sistema de carga).
+- Todas las acciones las realiza un **operador logueado**: recepción de la orden de SAP, pesajes, validación de contraseña (3.a) y cierre. Su id queda en `orden_estado_log.id_usuario`. Estos endpoints usan `@PreAuthorize("hasRole('OPERADOR') or hasRole('ADMIN')")`, así que el caudalímetro recibe **403**.
+- El caudalímetro solo usa el endpoint de lecturas (3.b), protegido con `@PreAuthorize("hasRole('INTEGRATION') or hasRole('ADMIN')")`: un operador que intente mandar lecturas recibe **403**. Como las lecturas no cambian el estado, no aparece en el log.
 
 ### Login y token (ticket 02)
 
@@ -250,3 +250,23 @@ Cada ticket agrega acá las decisiones que tomó durante el desarrollo y cuáles
 
 - **07:** la carga empieza después de esta validación; la orden sigue en estado 2.
 - **10 (Postman):** usar la variable con la contraseña guardada en el request del pesaje inicial.
+
+## Ticket 07 · Recepción de datos de carga en tiempo real (Valentina Beas)
+
+### Decisiones
+
+- **Endpoint** `POST /api/v1/ordenes/{numeroOrden}/datos-carga`, en un controller propio (`CargaRestController`) con su negocio (`ICargaBusiness` / `CargaBusiness`). Body `{"masaAcumulada": 1500.5, "densidad": 0.5432, "temperatura": 18.3, "caudal": 3200}` (`DatoCargaRequest`). La validación de contraseña (3.a) quedó en `OrdenRestController` (ticket 06).
+- **Rol `ROLE_INTEGRATION`** (acordado en grupo): el endpoint usa `@PreAuthorize("hasRole('INTEGRATION') or hasRole('ADMIN')")`. En `data.sql` se agrega el rol (id 3) y `caudalimetro` pasa a tener solo ese rol. Así hay un 403 real en los dos sentidos: operador → lecturas, y caudalímetro → cualquier otro endpoint.
+- Responde **200** con `DatoCargaResponse`: `numeroOrden`, los últimos valores, `fechaUltimoDato` y `guardadoEnDetalle` (si la lectura además se guardó en `detalle_carga`).
+- **Validaciones, en este orden:** falta algún dato, caudal ≤ 0 o masa ≤ 0 → **400**; orden inexistente → **404** (`cargarPorNumeroOrden`); orden que no está en estado 2 → **409** (incluye la orden cerrada del ticket 08); masa menor a la última recibida → **400**. Una masa igual a la última se acepta.
+- Cada lectura válida sobrescribe `ultimaMasaAcumulada`, `ultimaDensidad`, `ultimaTemperatura`, `ultimoCaudal` y `fechaUltimoDato`. La primera fija `fechaInicioCarga`; todas actualizan `fechaFinCarga`.
+- **Detalle de carga:** entidad `DetalleCarga` + `DetalleCargaRepository`. El último detalle guardado se busca con `findTopByOrdenOrderByFechaDesc`; si no hay ninguno se guarda siempre, y si no, solo cuando pasaron `carga.detalle.frecuencia-segundos` (≥). La fecha del último detalle no se guarda en `orden`: sale de la tabla.
+- El timestamp lo pone el servidor **sin milisegundos** (`truncatedTo(SECONDS)`): las columnas `DATETIME` guardan segundos y así la comparación con la frecuencia no depende del redondeo de MySQL.
+- Actualización de la orden + detalle en una transacción (`@Transactional(rollbackFor = Exception.class)`). No escribe en `orden_estado_log` porque no cambia el estado.
+
+### Impacto en otros tickets
+
+- **08 (cierre):** "al menos una lectura recibida" se puede ver con `orden.fechaInicioCarga != null` (o `ultimaMasaAcumulada`). Una lectura a una orden cerrada ya da **409** por el control de estado de este ticket.
+- **09 (conciliación):** los promedios salen de `detalle_carga` (`DetalleCargaRepository`); el producto cargado es `orden.ultimaMasaAcumulada`.
+- **10 (Postman):** las lecturas se mandan con el token de `caudalimetro`. La prueba de roles se hace con él: `POST /api/v1/ordenes` → 403, y con el token de `operador` el endpoint de lecturas → 403. También van los requests de lectura válida y de cada descarte (400).
+- **Base de datos:** como cambia `data.sql`, después de mergear este ticket hay que recrear la base desde `infra/` con `docker compose down -v` y `docker compose up -d --build` (borra los datos de prueba) y volver a hacer login.
