@@ -236,3 +236,17 @@ Cada ticket agrega acá las decisiones que tomó durante el desarrollo y cuáles
 - **06 a 09:** usar `ordenBusiness.cargarPorNumeroOrden` para buscar la orden y `registrarCambioEstado(orden, anterior, nuevo, fecha, usuario, observaciones)` para el log.
 - **06:** la contraseña está en `orden.passwordActivacion`.
 - **10 (Postman):** guardar `passwordActivacion` de la respuesta en una variable para el request del 06.
+
+## Ticket 06 · Validación de contraseña de activación (Mirko Bubica)
+
+### Decisiones
+
+- **Endpoint** `POST /api/v1/ordenes/{numeroOrden}/validar-password`, solo `ROLE_OPERADOR` o `ROLE_ADMIN`. Body `{"password": 13439}` (`ValidacionPasswordRequest`). Es POST para que la contraseña viaje en el body y no en la URL.
+- Responde **200** con `{"preset": n}` (`ValidacionPasswordResponse`).
+- **Validaciones:** contraseña faltante → **400**; orden inexistente → **404**; orden que no está en estado 2 → **409**; contraseña incorrecta → **401** (`BadPasswordException`).
+- No cambia el estado ni escribe en el log, así que se puede validar varias veces mientras la orden siga en estado 2.
+
+### Impacto en otros tickets
+
+- **07:** la carga empieza después de esta validación; la orden sigue en estado 2.
+- **10 (Postman):** usar la variable con la contraseña guardada en el request del pesaje inicial.
