@@ -13,3 +13,5 @@
 - [ ] Cada request tiene tests que verifican el código HTTP y los datos clave (estado, preset, valores de la conciliación)
 - [ ] Incluye casos de error representativos (duplicado, estado inválido, contraseña incorrecta, lectura descartada)
 - [ ] El circuito pasa completo contra un entorno recién levantado con Docker (número de orden generado dinámicamente para poder repetirlo)
+- [ ] Incluye el request de login del ticket 02, con el script que guarda el token en una variable de la colección
+- [ ] Decidir si el endpoint temporal de prueba de roles (`/api/v1/prueba-auth`, del ticket 02) queda o se elimina
