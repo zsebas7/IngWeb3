@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import ar.com.gaslogix.auth.Usuario;
+import ar.com.gaslogix.business.exception.BadPasswordException;
 import ar.com.gaslogix.business.exception.BadRequestException;
 import ar.com.gaslogix.business.exception.BusinessException;
 import ar.com.gaslogix.business.exception.FoundException;
@@ -143,6 +144,24 @@ public class OrdenBusiness implements IOrdenBusiness {
 	// 5 dígitos (10000 a 99999). SecureRandom porque la contraseña habilita la carga: no tiene que ser predecible
 	private int generarPasswordActivacion() {
 		return RANDOM.nextInt(10000, 100000);
+	}
+
+	// Solo lectura: no cambia el estado ni escribe el log, por eso se puede repetir mientras siga en estado 2
+	@Override
+	public Orden validarPasswordActivacion(Long numeroOrden, Integer password) throws BadRequestException,
+			NotFoundException, InvalidStateException, BadPasswordException, BusinessException {
+		if (password == null) {
+			throw BadRequestException.builder().message("Falta la contraseña de activación").build();
+		}
+		Orden orden = cargarPorNumeroOrden(numeroOrden);
+		if (orden.getEstado() != Constants.ESTADO_CON_PESAJE_INICIAL) {
+			throw InvalidStateException.builder().message("La orden número " + numeroOrden + " está en estado "
+					+ orden.getEstado() + "; la validación de la contraseña requiere estado 2").build();
+		}
+		if (!password.equals(orden.getPasswordActivacion())) {
+			throw BadPasswordException.builder().message("Contraseña de activación incorrecta").build();
+		}
+		return orden;
 	}
 
 	// JSON → Orden con el deserializador propio; cualquier error de formato es culpa del cliente → 400

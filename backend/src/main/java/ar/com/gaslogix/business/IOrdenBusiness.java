@@ -3,6 +3,7 @@ package ar.com.gaslogix.business;
 import java.math.BigDecimal;
 
 import ar.com.gaslogix.auth.Usuario;
+import ar.com.gaslogix.business.exception.BadPasswordException;
 import ar.com.gaslogix.business.exception.BadRequestException;
 import ar.com.gaslogix.business.exception.BusinessException;
 import ar.com.gaslogix.business.exception.FoundException;
@@ -21,4 +22,8 @@ public interface IOrdenBusiness {
 	// Punto 2: registra la tara, genera la contraseña de activación y pasa la orden a estado 2
 	public Orden registrarPesajeInicial(Long numeroOrden, BigDecimal tara, Usuario usuario)
 			throws BadRequestException, NotFoundException, InvalidStateException, BusinessException;
+
+	// Punto 3.a: valida la contraseña de activación de una orden en estado 2 (no cambia el estado)
+	public Orden validarPasswordActivacion(Long numeroOrden, Integer password) throws BadRequestException,
+			NotFoundException, InvalidStateException, BadPasswordException, BusinessException;
 }

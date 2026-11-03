@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import ar.com.gaslogix.business.IOrdenBusiness;
+import ar.com.gaslogix.business.exception.BadPasswordException;
 import ar.com.gaslogix.business.exception.BadRequestException;
 import ar.com.gaslogix.business.exception.BusinessException;
 import ar.com.gaslogix.business.exception.FoundException;
@@ -21,6 +22,8 @@ import ar.com.gaslogix.business.exception.NotFoundException;
 import ar.com.gaslogix.model.Orden;
 import ar.com.gaslogix.model.dto.PesajeInicialRequest;
 import ar.com.gaslogix.model.dto.PesajeInicialResponse;
+import ar.com.gaslogix.model.dto.ValidacionPasswordRequest;
+import ar.com.gaslogix.model.dto.ValidacionPasswordResponse;
 import ar.com.gaslogix.util.IStandartResponseBusiness;
 import ar.com.gaslogix.util.StandartResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -124,6 +127,44 @@ public class OrdenRestController extends BaseRestController {
 					orden.getFechaPesajeInicial(), orden.getPasswordActivacion()), HttpStatus.OK);
 		} catch (BadRequestException e) {
 			return new ResponseEntity<>(response.build(HttpStatus.BAD_REQUEST, e, e.getMessage()), HttpStatus.BAD_REQUEST);
+		} catch (NotFoundException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.NOT_FOUND, e, e.getMessage()), HttpStatus.NOT_FOUND);
+		} catch (InvalidStateException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.CONFLICT, e, e.getMessage()), HttpStatus.CONFLICT);
+		} catch (BusinessException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.INTERNAL_SERVER_ERROR, e, e.getMessage()),
+					HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	@Operation(operationId = "validar-password", summary = "Punto 3.a: valida la contraseña de activación y devuelve el preset. Se puede repetir mientras la orden siga en estado 2.")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Contraseña correcta. Devuelve el preset.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = ValidacionPasswordResponse.class)) }),
+			@ApiResponse(responseCode = "400", description = "Falta la contraseña.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "401", description = "Contraseña incorrecta, o falta el token o es inválido.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "403", description = "El usuario no tiene rol OPERADOR ni ADMIN.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "404", description = "No existe una orden con ese número.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "409", description = "La orden no está en estado 2.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "500", description = "Error interno.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }) })
+	@PreAuthorize("hasRole('OPERADOR') or hasRole('ADMIN')")
+	@PostMapping(value = Constants.URL_ORDENES + "/{numeroOrden}/validar-password",
+			consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<?> validarPassword(@Parameter(description = "Número de orden de SAP.") @PathVariable Long numeroOrden,
+			@RequestBody ValidacionPasswordRequest validacion) {
+		try {
+			Orden orden = ordenBusiness.validarPasswordActivacion(numeroOrden, validacion.password());
+			return new ResponseEntity<>(new ValidacionPasswordResponse(orden.getPreset()), HttpStatus.OK);
+		} catch (BadRequestException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.BAD_REQUEST, e, e.getMessage()), HttpStatus.BAD_REQUEST);
+		} catch (BadPasswordException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.UNAUTHORIZED, e, e.getMessage()), HttpStatus.UNAUTHORIZED);
 		} catch (NotFoundException e) {
 			return new ResponseEntity<>(response.build(HttpStatus.NOT_FOUND, e, e.getMessage()), HttpStatus.NOT_FOUND);
 		} catch (InvalidStateException e) {
