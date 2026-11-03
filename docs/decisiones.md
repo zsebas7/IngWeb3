@@ -21,10 +21,8 @@ Registro de las decisiones tomadas antes de implementar. Si alguna cambia, actua
 ```
 ar.com.gaslogix
 ├── GaslogixApplication
-├── auth/                 Usuario, Rol, UsuarioRepository, UsuarioBusiness, JwtService, DTOs de login,
-│   ├── custom/           CustomAuthenticationManager
-│   └── filters/          JWTAuthorizationFilter
-├── security/             SecurityConfiguration, JsonSecurityErrorHandler (401/403)
+├── auth/                 Usuario, Rol, repositorios, UserBusiness, filtro JWT
+├── security/             SecurityConfiguration
 ├── config/               OpenApiConfig
 ├── controllers/          Constants, BaseRestController, AuthRestController,
 │                         OrdenRestController   (1 recepción, 4 cierre, conciliación)
@@ -41,39 +39,6 @@ ar.com.gaslogix
 
 Se toma como referencia https://github.com/magm3333/iw3_2026 (capas, excepciones con `@Builder`, `StandartResponse`, `Constants`, deserializador con `JsonUtiles`). No se usa la herencia de entidades por cliente (`ProductCli1 extends Product`) porque cada tabla ya tiene `codigo_externo`.
 
-## Flujo de trabajo con Git
-
-- `main`: versión estable. Solo se actualiza desde `develop`.
-- `develop`: rama de integración, creada desde `main`.
-- Una rama por ticket, creada desde `develop`, con el nombre `ticket-NN-descripcion` (por ejemplo, `ticket-01-base-comun`).
-- Al terminar un ticket se abre un Pull Request de la rama del ticket hacia `develop`.
-
-## Tickets
-
-- Los tickets del segundo parcial están en `.scratch/segundo-parcial/issues/`, uno por archivo.
-- Se generaron con la skill `to-tickets`, que no se versiona.
-  
-  | Integrante | Tickets |
-  | --- | --- |
-  | Leonel Ruiz Notari | 01, 02 |
-  | Valentina Beas | 07, 09 |
-  | Mirko Bubica | 03, 05, 06 |
-  | Sebastián Caparroz | 04, 08, 10 |
-
-## Manejo de errores
-
-- Cada controller captura las excepciones de negocio con `try/catch` y arma la respuesta con `StandartResponse`. No se usa un handler global (`@RestControllerAdvice`).
-- Excepciones (en inglés), cada una con un único `@Builder (message, ex)`:
-
-  | Excepción | Código HTTP | Uso |
-  | --- | --- | --- |
-  | `BusinessException` | 500 | Error inesperado de lógica o de acceso a la BD |
-  | `NotFoundException` | 404 | Entidad inexistente |
-  | `FoundException` | 409 | Entidad duplicada |
-  | `InvalidStateException` | 409 | La orden no está en el estado requerido |
-  | `BadRequestException` | 400 | Datos inválidos o incompletos |
-  | `BadPasswordException` | 401 | Contraseña de activación incorrecta |
-
 ## Estados de la orden
 
 Constantes `int` en `Constants.java`: `ESTADO_PENDIENTE_PESAJE_INICIAL = 1`, `ESTADO_CON_PESAJE_INICIAL = 2`, `ESTADO_CERRADA_PARA_CARGA = 3`, `ESTADO_FINALIZADA = 4`.
@@ -81,26 +46,12 @@ Cada transición se registra en `orden_estado_log`, en la misma transacción.
 
 ## Seguridad
 
-- Login con JWT.
+- Login con JWT desde el segundo parcial.
 - Tablas `usuario`, `rol` y `usuario_rol` (N:M). Los flags de cuenta (`enabled`, `account_non_expired`, ...) mantienen los nombres de `UserDetails` de Spring Security.
 - Roles: `ROLE_ADMIN` y `ROLE_OPERADOR`.
 - Usuarios precargados: `admin` (ADMIN), `operador` (OPERADOR) y `caudalimetro` (OPERADOR, usuario técnico del sistema de carga).
 - Todas las acciones las realiza un **operador logueado**: recepción de la orden de SAP, pesajes, validación de contraseña (3.a) y cierre. Su id queda en `orden_estado_log.id_usuario`.
 - El caudalímetro se autentica para enviar lecturas (3.b). Como eso no cambia el estado, no aparece en el log.
-
-### Login y token (ticket 02)
-
-- `POST /api/v1/login` (público) recibe JSON `{"username", "password"}`. Solo se inicia sesión con username, no con email.
-- Respuesta exitosa: `{"token", "username", "roles"}`. Credenciales faltantes → **400**; incorrectas, usuario inexistente o cuenta deshabilitada/bloqueada/vencida → **401**.
-- Para no revelar qué usuarios existen, "usuario inexistente" y "contraseña incorrecta" devuelven el mismo mensaje. El estado de la cuenta se informa solo si la contraseña es correcta.
-- El token (HMAC-SHA256) lleva el username (`sub`), el `id`, los `roles` y vence a las **8 horas** (`jwt.expiracion-horas`).
-- La clave de firma se lee de la variable de entorno `JWT_SECRET`, con un valor de desarrollo por defecto en `application.properties`. Con Docker es obligatoria en `infra/.env`: **quien tenga un `.env` anterior debe copiar la línea `JWT_SECRET` de `.env.example`**.
-- Cada request trae `Authorization: Bearer <token>`. El filtro JWT valida el token y recarga el usuario de la BD, así un usuario deshabilitado pierde el acceso en el siguiente request.
-- Los 401 y 403 de Spring Security también responden con `StandartResponse`. El 401 indica el motivo (falta el token, token inválido, token vencido).
-- Rutas públicas: el login, Swagger (`/swagger-ui.html`, `/v3/api-docs/**`) y `/error`. Todo lo demás requiere token.
-- Los endpoints se restringen por rol con `@PreAuthorize("hasRole('OPERADOR')")` (Spring agrega el prefijo `ROLE_`).
-- Los controllers heredan de `BaseRestController` y obtienen el usuario logueado con `getUserLogged()`.
-- `/api/v1/prueba-auth` es un endpoint temporal para probar roles; en el ticket 10 se decide si queda.
 
 ## 1. Recepción de la orden
 
@@ -110,12 +61,12 @@ Cada transición se registra en `orden_estado_log`, en la misma transacción.
   | Entidad | Identificador alternativo |
   | --- | --- |
   | Camión | patente |
-  | Chofer | documento (único) |
-  | Cliente | ninguno: el código externo es obligatorio (la razón social no es única) |
-  | Producto | ninguno: el código externo es obligatorio (el nombre no es único) |
+  | Chofer | documento |
+  | Cliente | razón social |
+  | Producto | nombre |
 
   Si faltan el código externo y el identificador alternativo → **400**.
-- Si la patente recibida pertenece a otro camión → **409** (venga o no el código externo). Lo mismo con el documento del chofer.
+- Si el código externo del camión existe pero la patente recibida pertenece a otro camión → **409**.
 - Cisternas: se reemplaza la lista completa del camión por la recibida.
 - `orden.codigo_externo` es un código opcional del cliente, distinto de `numero_orden`; queda NULL si el cliente solo usa el número.
 - Orden duplicada → **409** si se repite `numero_orden`, o `codigo_externo` cuando no es NULL.
@@ -160,79 +111,3 @@ Cada transición se registra en `orden_estado_log`, en la misma transacción.
 | 403 | Rol sin permiso |
 | 404 | Orden inexistente |
 | 409 | Estado inválido o duplicado |
-
----
-
-# Decisiones por ticket
-
-Cada ticket agrega acá las decisiones que tomó durante el desarrollo y cuáles afectan a tickets futuros.
-
-## Ticket 03 · Recepción de orden con entidades nuevas (Mirko Bubica)
-
-### Decisiones
-
-- **Entidades** en `model/`: `Camion`, `Cisterna`, `Chofer`, `Cliente`, `Producto`, `Orden`, `OrdenEstadoLog`, mapeadas columna por columna contra `schema.sql` (`ddl-auto=validate`).
-  - Fechas con `LocalDateTime`; montos y medidas con `BigDecimal` (`precision`/`scale` iguales al `DECIMAL` del esquema).
-  - `estado`, `estado_anterior` y `estado_nuevo` con `columnDefinition = "TINYINT"`. `estadoAnterior` es `Integer` porque es NULL al crear la orden.
-  - `Camion` → `Cisterna`: `@OneToMany(mappedBy = "camion", cascade = CascadeType.ALL)`; al guardar el camión se guardan sus cisternas. `Cisterna.camion` lleva `@JsonIgnore` para evitar un bucle al convertir a JSON.
-  - `Orden` → camión, chofer, cliente y producto: `@ManyToOne` con `@JoinColumn` (`id_camion`, etc.).
-  - `OrdenEstadoLog.usuario` es `@ManyToOne` a `auth.Usuario` (el usuario logueado de `getUserLogged()`).
-- **Endpoint** `POST /api/v1/ordenes` (`Constants.URL_ORDENES`), solo `ROLE_OPERADOR` o `ROLE_ADMIN`. Recibe el JSON crudo (`HttpEntity<String>`) y responde **201** con `Location: /api/v1/ordenes/{numeroOrden}`.
-- **JSON de SAP** en camelCase: `numeroOrden`, `codigoExterno`, `camion` (con `cisternas[]`), `chofer`, `cliente`, `producto`, `fechaCargaPrevista` (`yyyy-MM-ddTHH:mm:ss`, hora de Argentina) y `preset`. `OrdenJsonDeserializer` + `JsonUtiles` aceptan nombres alternativos.
-  - Nombres alternativos aceptados (por ejemplo `numero_orden`/`orderNumber`, `truck`, `driver`, `customer`, `product`, `dominio`/`plate`, `tanks`): la lista completa está en las constantes de `OrdenJsonDeserializer`.
-  - **Formato de fecha:** solo ISO-8601 **sin zona horaria** (`2026-11-05T08:00:00`, hora de Argentina), con `LocalDateTime.parse`. **Pendiente para cuando haya frontend:** JavaScript manda las fechas con `toISOString()` en UTC (`2026-11-05T11:00:00.000Z`), que hoy da 400. En ese momento hay que aceptar también fechas con zona (`Z` o `-03:00`) y convertirlas a la hora de Argentina; el cambio va solo en `OrdenJsonDeserializer`.
-  - El deserializador **solo arma los objetos** (no consulta la BD): si falta un dato lo deja en `null` y `OrdenBusiness` decide el 400. Números con decimales se leen como `BigDecimal`; `numeroOrden` solo se acepta si es entero.
-- `numeroOrden` es **obligatorio** (aclaración del profe); el `codigoExterno` de la orden es opcional.
-- **Validaciones:** 400 si falta `numeroOrden`, `preset`, `fechaCargaPrevista` o alguna entidad, si el `preset` no es mayor a 0, si la fecha de carga prevista es pasada o si el JSON es inválido. 409 si se repite `numeroOrden`, o el `codigoExterno` de la orden cuando no es NULL.
-  - Al **crear** una entidad nueva también es 400 si le falta un dato `NOT NULL` del esquema: patente del camión, nombre y capacidad de cada cisterna, nombre y apellido del chofer, razón social del cliente y nombre del producto. Si la entidad se reutiliza por código externo, no se exigen.
-- **Entidades existentes:** si vienen con un código externo que ya está en la BD, se **reutilizan sin actualizar**; si no existen (o no traen código externo), se crean. Cada entidad se resuelve en su propio método de `OrdenBusiness` (`obtenerOCrearCamion`, `obtenerOCrearChofer`, `obtenerOCrearCliente`, `obtenerOCrearProducto`).
-- **Se busca primero por código externo** porque es el identificador de integración que garantiza SAP (único y estable); razón social y nombre no son únicos en el esquema y el documento es opcional. La búsqueda por **identificador alternativo** cuando no viene el código externo (patente, documento, razón social, nombre) **queda para el ticket 04** (acordado en grupo, opción A).
-- **Hueco conocido hasta el ticket 04:** si llega dos veces una entidad con un `UNIQUE` propio (por ejemplo, la patente del camión) **sin** código externo, la segunda vez se intenta crear y falla con 500.
-- **Transacción única** (`@Transactional(rollbackFor = Exception.class)`): entidades + orden en estado 1 con fecha de recepción + log NULL → 1 con el usuario logueado. El `rollbackFor` es necesario porque nuestras excepciones son *checked* (`extends Exception`) y Spring, por defecto, solo hace rollback con `RuntimeException`.
-
-### Impacto en otros tickets
-
-- **04 (sincronización):** la sincronización completa va dentro de los métodos `obtenerOCrear...` de `OrdenBusiness` (actualizar datos, buscar por identificador alternativo, reemplazar cisternas). Para reemplazar las cisternas conviene agregar `orphanRemoval = true` en `Camion.cisternas`. Hoy un choque de `unique` (por ejemplo, una patente repetida) termina en 500; el 04 lo convierte en 409/400.
-- **05, 06, 07, 08, 09:** buscar la orden con `OrdenRepository.findByNumeroOrden` (los endpoints usan el número de orden, no el id interno). Registrar cada transición en `orden_estado_log` igual que en el 03 (estado anterior, nuevo, fecha, usuario logueado) y dentro de la misma transacción, con `@Transactional(rollbackFor = Exception.class)`. La entidad `Orden` ya tiene todas las columnas de los puntos 2 a 5.
-- **10 (Postman):** el request de Postman del punto 1 se arma en el 10 (acordado en grupo); el JSON de ejemplo está en Swagger (`OrdenRestController.EJEMPLO_ORDEN`). En el 10 también va la prueba de roles: un usuario sin rol OPERADOR ni ADMIN recibe 403 en `POST /api/v1/ordenes`.
-
-## Ticket 04 · Sincronización de entidades existentes (Sebastián Caparroz)
-
-### Decisiones
-
-- La sincronización está en los métodos `obtenerOCrear...` de `OrdenBusiness`. Reemplaza el comportamiento del ticket 03 ("se reutilizan sin actualizar"): ahora una entidad existente **se actualiza con los datos recibidos**.
-- **Búsqueda** (acordado en grupo):
-  - Camión: por código externo; si no viene, por patente (`CamionRepository.findByPatente`).
-  - Chofer: por código externo; si no viene, por documento (`ChoferRepository.findByDocumento`). Sin ninguno de los dos → **400**.
-  - Cliente y producto: **código externo obligatorio** (→ **400** si falta), porque razón social y nombre no son únicos.
-- **`chofer.documento` pasa a ser único** (`chofer_documento_unique` en `schema.sql` y `unique = true` en `Chofer`). MySQL permite varios NULL en un `UNIQUE`. La restricción se aplica al recrear la base (`docker compose down -v`); la lógica no depende de ella porque el conflicto se controla antes de guardar.
-- **Conflictos → 409** (`FoundException`), controlados en el negocio antes del `save` para no depender del error de la BD (que daría 500):
-  - la patente recibida pertenece a otro camión: tanto si el camión se encontró por código externo como si el código externo es nuevo;
-  - el documento recibido pertenece a otro chofer (mismo criterio).
-- **Actualización:** se pisan los datos con lo recibido, incluso con `null` en los opcionales (descripción, contacto, documento si el chofer tiene código externo). Los obligatorios del esquema se exigen siempre, al crear y al actualizar (→ **400**). El código externo de una entidad existente no se modifica.
-- **Cisternas:** se reemplazan por completo con `getCisternas().clear()` + `orphanRemoval = true` en `Camion.cisternas`. No se usa `setCisternas(otraLista)`: con `orphanRemoval` Hibernate exige conservar la misma colección. Un camión sin cisternas → **400** (al crear y al actualizar).
-- `recibirOrden` relanza `FoundException` en su `catch`; antes cualquier excepción que no fuera `BadRequestException` terminaba en 500.
-- Sigue siendo **una sola transacción** (`@Transactional(rollbackFor = Exception.class)` del ticket 03): ante un 400/409 no queda guardada ninguna entidad sincronizada ni la orden.
-
-### Impacto en otros tickets
-
-- **10 (Postman):** requests de sincronización: entidad existente actualizada, entidad sin identificador (400) y conflicto de patente (409). Todos los clientes y productos del JSON deben traer `codigoExterno`.
-
-## Ticket 05 · Pesaje inicial (Mirko Bubica)
-
-### Decisiones
-
-- **Endpoint** `POST /api/v1/ordenes/{numeroOrden}/pesaje-inicial`, solo `ROLE_OPERADOR` o `ROLE_ADMIN`. Body `{"tara": 8500}` (`PesajeInicialRequest`).
-- Responde **200** con `PesajeInicialResponse`: `numeroOrden`, `tara`, `fechaPesajeInicial` y `passwordActivacion`.
-- **Validaciones:** tara faltante o ≤ 0 → **400**; orden inexistente → **404**; orden que no está en estado 1 → **409** (`InvalidStateException`).
-- Contraseña de activación de 5 dígitos (10000 a 99999) generada con `SecureRandom`. No es única entre órdenes, porque siempre se valida junto con el número de orden.
-- Tara, fecha, contraseña, estado 2 y log 1 → 2 en una sola transacción.
-- `cargarPorNumeroOrden` queda público en `IOrdenBusiness` (404 si no existe).
-- `registrarCambioEstado` recibe las observaciones como parámetro.
-- Los DTOs van en `model/dto`.
-
-### Impacto en otros tickets
-
-- **06 a 09:** usar `ordenBusiness.cargarPorNumeroOrden` para buscar la orden y `registrarCambioEstado(orden, anterior, nuevo, fecha, usuario, observaciones)` para el log.
-- **06:** la contraseña está en `orden.passwordActivacion`.
-- **10 (Postman):** guardar `passwordActivacion` de la respuesta en una variable para el request del 06.

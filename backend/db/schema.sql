@@ -65,8 +65,7 @@ CREATE TABLE chofer (
     nombre         VARCHAR(100) NOT NULL,
     apellido       VARCHAR(100) NOT NULL,
     documento      VARCHAR(20)  NULL,
-    CONSTRAINT chofer_codigo_externo_unique UNIQUE (codigo_externo),
-    CONSTRAINT chofer_documento_unique UNIQUE (documento)
+    CONSTRAINT chofer_codigo_externo_unique UNIQUE (codigo_externo)
 );
 
 CREATE TABLE cliente (
