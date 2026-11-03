@@ -217,3 +217,22 @@ Cada ticket agrega acá las decisiones que tomó durante el desarrollo y cuáles
 ### Impacto en otros tickets
 
 - **10 (Postman):** requests de sincronización: entidad existente actualizada, entidad sin identificador (400) y conflicto de patente (409). Todos los clientes y productos del JSON deben traer `codigoExterno`.
+
+## Ticket 05 · Pesaje inicial (Mirko Bubica)
+
+### Decisiones
+
+- **Endpoint** `POST /api/v1/ordenes/{numeroOrden}/pesaje-inicial`, solo `ROLE_OPERADOR` o `ROLE_ADMIN`. Body `{"tara": 8500}` (`PesajeInicialRequest`).
+- Responde **200** con `PesajeInicialResponse`: `numeroOrden`, `tara`, `fechaPesajeInicial` y `passwordActivacion`.
+- **Validaciones:** tara faltante o ≤ 0 → **400**; orden inexistente → **404**; orden que no está en estado 1 → **409** (`InvalidStateException`).
+- Contraseña de activación de 5 dígitos (10000 a 99999) generada con `SecureRandom`. No es única entre órdenes, porque siempre se valida junto con el número de orden.
+- Tara, fecha, contraseña, estado 2 y log 1 → 2 en una sola transacción.
+- `cargarPorNumeroOrden` queda público en `IOrdenBusiness` (404 si no existe).
+- `registrarCambioEstado` recibe las observaciones como parámetro.
+- Los DTOs van en `model/dto`.
+
+### Impacto en otros tickets
+
+- **06 a 09:** usar `ordenBusiness.cargarPorNumeroOrden` para buscar la orden y `registrarCambioEstado(orden, anterior, nuevo, fecha, usuario, observaciones)` para el log.
+- **06:** la contraseña está en `orden.passwordActivacion`.
+- **10 (Postman):** guardar `passwordActivacion` de la respuesta en una variable para el request del 06.

@@ -1,6 +1,7 @@
 package ar.com.gaslogix.business;
 
 import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -12,6 +13,8 @@ import ar.com.gaslogix.auth.Usuario;
 import ar.com.gaslogix.business.exception.BadRequestException;
 import ar.com.gaslogix.business.exception.BusinessException;
 import ar.com.gaslogix.business.exception.FoundException;
+import ar.com.gaslogix.business.exception.InvalidStateException;
+import ar.com.gaslogix.business.exception.NotFoundException;
 import ar.com.gaslogix.controllers.Constants;
 import ar.com.gaslogix.model.Camion;
 import ar.com.gaslogix.model.Chofer;
@@ -34,6 +37,8 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 @Slf4j
 public class OrdenBusiness implements IOrdenBusiness {
+
+	private static final SecureRandom RANDOM = new SecureRandom();
 
 	@Autowired
 	private OrdenRepository ordenDAO;
@@ -76,7 +81,8 @@ public class OrdenBusiness implements IOrdenBusiness {
 			orden.setFechaRecepcion(ahora);
 			orden = ordenDAO.save(orden);
 
-			registrarCambioEstado(orden, null, Constants.ESTADO_PENDIENTE_PESAJE_INICIAL, ahora, usuario);
+			registrarCambioEstado(orden, null, Constants.ESTADO_PENDIENTE_PESAJE_INICIAL, ahora, usuario,
+					"Orden recibida desde SAP");
 			return orden;
 		} catch (BadRequestException e) {
 			throw e;
@@ -87,6 +93,56 @@ public class OrdenBusiness implements IOrdenBusiness {
 			log.error(e.getMessage(), e);
 			throw BusinessException.builder().ex(e).build();
 		}
+	}
+
+	@Override
+	public Orden cargarPorNumeroOrden(Long numeroOrden) throws NotFoundException, BusinessException {
+		Optional<Orden> r;
+		try {
+			r = ordenDAO.findByNumeroOrden(numeroOrden);
+		} catch (Exception e) {
+			log.error(e.getMessage(), e);
+			throw BusinessException.builder().ex(e).build();
+		}
+		if (r.isEmpty()) {
+			throw NotFoundException.builder().message("No se encuentra la orden número " + numeroOrden).build();
+		}
+		return r.get();
+	}
+
+	@Override
+	@Transactional(rollbackFor = Exception.class)
+	public Orden registrarPesajeInicial(Long numeroOrden, BigDecimal tara, Usuario usuario)
+			throws BadRequestException, NotFoundException, InvalidStateException, BusinessException {
+		if (tara == null || tara.compareTo(BigDecimal.ZERO) <= 0) {
+			throw BadRequestException.builder().message("Falta la tara o no es mayor a 0").build();
+		}
+		Orden orden = cargarPorNumeroOrden(numeroOrden);
+		if (orden.getEstado() != Constants.ESTADO_PENDIENTE_PESAJE_INICIAL) {
+			throw InvalidStateException.builder().message("La orden número " + numeroOrden + " está en estado "
+					+ orden.getEstado() + "; el pesaje inicial requiere estado 1").build();
+		}
+
+		try {
+			LocalDateTime ahora = LocalDateTime.now();
+			orden.setTara(tara);
+			orden.setFechaPesajeInicial(ahora);
+			orden.setPasswordActivacion(generarPasswordActivacion());
+			orden.setEstado(Constants.ESTADO_CON_PESAJE_INICIAL);
+			orden = ordenDAO.save(orden);
+
+			registrarCambioEstado(orden, Constants.ESTADO_PENDIENTE_PESAJE_INICIAL, Constants.ESTADO_CON_PESAJE_INICIAL,
+					ahora, usuario, "Pesaje inicial registrado");
+			return orden;
+		} catch (Exception e) {
+			log.error(e.getMessage(), e);
+			throw BusinessException.builder().ex(e).build();
+		}
+	}
+
+	// 5 dígitos (10000 a 99999). SecureRandom porque la contraseña habilita la carga: no tiene que ser predecible
+	private int generarPasswordActivacion() {
+		return RANDOM.nextInt(10000, 100000);
 	}
 
 	// JSON → Orden con el deserializador propio; cualquier error de formato es culpa del cliente → 400
@@ -252,14 +308,14 @@ public class OrdenBusiness implements IOrdenBusiness {
 
 	// Auditoría: quién cambió el estado, cuándo y de cuál a cuál (los tickets 05 a 09 repiten este patrón)
 	private void registrarCambioEstado(Orden orden, Integer estadoAnterior, int estadoNuevo, LocalDateTime fecha,
-			Usuario usuario) {
+			Usuario usuario, String observaciones) {
 		OrdenEstadoLog registro = new OrdenEstadoLog();
 		registro.setOrden(orden);
 		registro.setEstadoAnterior(estadoAnterior);
 		registro.setEstadoNuevo(estadoNuevo);
 		registro.setFecha(fecha);
 		registro.setUsuario(usuario);
-		registro.setObservaciones("Orden recibida desde SAP");
+		registro.setObservaciones(observaciones);
 		ordenEstadoLogDAO.save(registro);
 	}
 }
