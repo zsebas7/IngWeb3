@@ -1,6 +1,7 @@
 package ar.com.gaslogix.business;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -25,9 +26,11 @@ import ar.com.gaslogix.model.Orden;
 import ar.com.gaslogix.model.OrdenEstadoLog;
 import ar.com.gaslogix.model.Producto;
 import ar.com.gaslogix.model.deserializer.OrdenJsonDeserializer;
+import ar.com.gaslogix.model.dto.ConciliacionResponse;
 import ar.com.gaslogix.model.persistence.CamionRepository;
 import ar.com.gaslogix.model.persistence.ChoferRepository;
 import ar.com.gaslogix.model.persistence.ClienteRepository;
+import ar.com.gaslogix.model.persistence.DetalleCargaRepository;
 import ar.com.gaslogix.model.persistence.OrdenEstadoLogRepository;
 import ar.com.gaslogix.model.persistence.OrdenRepository;
 import ar.com.gaslogix.model.persistence.ProductoRepository;
@@ -58,6 +61,9 @@ public class OrdenBusiness implements IOrdenBusiness {
 
 	@Autowired
 	private ProductoRepository productoDAO;
+
+	@Autowired
+	private DetalleCargaRepository detalleCargaDAO;
 
 	/**
 	 * Todo en una sola transacción: si falla algo (por ejemplo, el log), no queda ni la orden ni las entidades nuevas.
@@ -190,6 +196,81 @@ public class OrdenBusiness implements IOrdenBusiness {
 			log.error(e.getMessage(), e);
 			throw BusinessException.builder().ex(e).build();
 		}
+	}
+
+	/**
+	 * Validaciones, en este orden: pesaje faltante o ≤ 0 (400) → orden inexistente (404) → estado ≠ 3 (409)
+	 * → pesaje ≤ tara (400, necesita la orden). Pesaje, estado 4 y log 3 → 4 en una sola transacción.
+	 */
+	@Override
+	@Transactional(rollbackFor = Exception.class)
+	public ConciliacionResponse registrarPesajeFinal(Long numeroOrden, BigDecimal pesajeFinal, Usuario usuario)
+			throws BadRequestException, NotFoundException, InvalidStateException, BusinessException {
+		if (pesajeFinal == null || pesajeFinal.compareTo(BigDecimal.ZERO) <= 0) {
+			throw BadRequestException.builder().message("Falta el pesaje final o no es mayor a 0").build();
+		}
+		Orden orden = cargarPorNumeroOrden(numeroOrden);
+		if (orden.getEstado() != Constants.ESTADO_CERRADA_PARA_CARGA) {
+			throw InvalidStateException.builder().message("La orden número " + numeroOrden + " está en estado "
+					+ orden.getEstado() + "; el pesaje final requiere estado 3").build();
+		}
+		// El camión cargado tiene que pesar más que vacío
+		if (pesajeFinal.compareTo(orden.getTara()) <= 0) {
+			throw BadRequestException.builder().message("El pesaje final (" + pesajeFinal
+					+ ") debe ser mayor a la tara (" + orden.getTara() + ")").build();
+		}
+
+		try {
+			LocalDateTime ahora = LocalDateTime.now();
+			orden.setPesajeFinal(pesajeFinal);
+			orden.setFechaPesajeFinal(ahora);
+			orden.setEstado(Constants.ESTADO_FINALIZADA);
+			orden = ordenDAO.save(orden);
+
+			registrarCambioEstado(orden, Constants.ESTADO_CERRADA_PARA_CARGA, Constants.ESTADO_FINALIZADA, ahora,
+					usuario, "Pesaje final registrado");
+			return armarConciliacion(orden);
+		} catch (Exception e) {
+			log.error(e.getMessage(), e);
+			throw BusinessException.builder().ex(e).build();
+		}
+	}
+
+	// Solo lectura (sin @Transactional, como la validación de contraseña): se puede consultar las veces que haga falta
+	@Override
+	public ConciliacionResponse obtenerConciliacion(Long numeroOrden)
+			throws NotFoundException, InvalidStateException, BusinessException {
+		Orden orden = cargarPorNumeroOrden(numeroOrden);
+		if (orden.getEstado() != Constants.ESTADO_FINALIZADA) {
+			throw InvalidStateException.builder().message("La orden número " + numeroOrden + " está en estado "
+					+ orden.getEstado() + "; la conciliación solo está disponible en estado 4").build();
+		}
+		try {
+			return armarConciliacion(orden);
+		} catch (Exception e) {
+			log.error(e.getMessage(), e);
+			throw BusinessException.builder().ex(e).build();
+		}
+	}
+
+	// La conciliación no se guarda: se calcula con los datos de la orden y los promedios de detalle_carga
+	private ConciliacionResponse armarConciliacion(Orden orden) {
+		BigDecimal netoPorBalanza = orden.getPesajeFinal().subtract(orden.getTara());
+		BigDecimal diferencia = netoPorBalanza.subtract(orden.getUltimaMasaAcumulada());
+		return new ConciliacionResponse(orden.getNumeroOrden(), orden.getTara(), orden.getPesajeFinal(),
+				orden.getUltimaMasaAcumulada(), netoPorBalanza, diferencia,
+				redondear(detalleCargaDAO.promedioTemperatura(orden), 2),
+				redondear(detalleCargaDAO.promedioDensidad(orden), 4),
+				redondear(detalleCargaDAO.promedioCaudal(orden), 2));
+	}
+
+	// AVG devuelve Double: se pasa a BigDecimal con los mismos decimales que la columna. Toda orden cerrada tiene
+	// al menos un detalle (la primera lectura siempre se guarda), pero se cubre el null por las dudas
+	private BigDecimal redondear(Double promedio, int decimales) {
+		if (promedio == null) {
+			return null;
+		}
+		return BigDecimal.valueOf(promedio).setScale(decimales, RoundingMode.HALF_UP);
 	}
 
 	// JSON → Orden con el deserializador propio; cualquier error de formato es culpa del cliente → 400

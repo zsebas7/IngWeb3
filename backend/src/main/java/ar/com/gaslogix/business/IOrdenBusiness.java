@@ -10,6 +10,7 @@ import ar.com.gaslogix.business.exception.FoundException;
 import ar.com.gaslogix.business.exception.InvalidStateException;
 import ar.com.gaslogix.business.exception.NotFoundException;
 import ar.com.gaslogix.model.Orden;
+import ar.com.gaslogix.model.dto.ConciliacionResponse;
 
 public interface IOrdenBusiness {
 
@@ -29,5 +30,13 @@ public interface IOrdenBusiness {
 
 	// Punto 4: cierra una orden en carga (estado 2 con al menos una lectura) y la pasa a estado 3
 	public Orden cerrarOrden(Long numeroOrden, Usuario usuario)
+			throws NotFoundException, InvalidStateException, BusinessException;
+
+	// Punto 5: registra el pesaje final de una orden cerrada, la pasa a estado 4 y devuelve la conciliación
+	public ConciliacionResponse registrarPesajeFinal(Long numeroOrden, BigDecimal pesajeFinal, Usuario usuario)
+			throws BadRequestException, NotFoundException, InvalidStateException, BusinessException;
+
+	// Punto 5: consulta la conciliación de una orden finalizada (estado 4). Solo lectura
+	public ConciliacionResponse obtenerConciliacion(Long numeroOrden)
 			throws NotFoundException, InvalidStateException, BusinessException;
 }
