@@ -1,0 +1,2203 @@
+{
+	"info": {
+		"_postman_id": "6aa18d94-7412-5549-844c-aad18741ca19",
+		"name": "GasLogix",
+		"description": "API de GasLogix (IW3 2026). Usar con el entorno \"GasLogix local\". Correr con el Collection Runner en orden: 0 · Login primero. La carpeta 1 es el circuito completo de una orden; la 2 recorre los errores de cada estado; la 3 prueba los roles; la 4, la sincronización de entidades (ticket 04).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "0 · Login",
+			"description": "Guarda los tokens del operador y del caudalímetro en el entorno.",
+			"item": [
+				{
+					"name": "Login operador",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Rol ROLE_OPERADOR\", () => pm.expect(pm.response.json().roles).to.include(\"ROLE_OPERADOR\"));",
+									"pm.environment.set(\"token\", pm.response.json().token);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Guarda el token en la variable token del entorno.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/login",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"login"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"{{usuarioOperador}}\",\n  \"password\": \"{{passOperador}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Login caudalímetro",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Rol ROLE_INTEGRATION\", () => pm.expect(pm.response.json().roles).to.include(\"ROLE_INTEGRATION\"));",
+									"pm.environment.set(\"tokenCaudalimetro\", pm.response.json().token);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Guarda el token en la variable tokenCaudalimetro del entorno.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/login",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"login"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"{{usuarioCaudalimetro}}\",\n  \"password\": \"{{passCaudalimetro}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "1 · Circuito completo",
+			"description": "Una orden de punta a punta: estados 1 → 2 → 3 → 4.",
+			"item": [
+				{
+					"name": "1.1 Recepción de la orden (201)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+									"pm.test(\"Header Location\", () => pm.expect(pm.response.headers.get(\"Location\")).to.include(\"/api/v1/ordenes/\"));",
+									"pm.environment.set(\"numeroOrdenCircuito\", pm.environment.get(\"numeroOrden\"));"
+								]
+							}
+						},
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Códigos, patentes y documentos nuevos en cada corrida",
+									"pm.environment.set(\"sufijo\", Date.now());"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "SAP manda la orden. Queda en estado 1.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAM-{{sufijo}}\", \"patente\": \"P{{sufijo}}\", \"descripcion\": \"Scania\", \"cisternas\": [{ \"nombre\": \"Cisterna 1\", \"capacidadLitros\": 10000 }, { \"nombre\": \"Cisterna 2\", \"capacidadLitros\": 5000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Perez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SRL\", \"contacto\": \"compras@refinor.com\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1.2 Pesaje inicial (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"const r = pm.response.json();",
+									"pm.test(\"Tara 8500\", () => pm.expect(r.tara).to.eql(8500));",
+									"pm.test(\"Contraseña de 5 dígitos\", () => pm.expect(r.passwordActivacion).to.be.within(10000, 99999));",
+									"pm.environment.set(\"passwordActivacion\", r.passwordActivacion);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "La balanza manda la tara: estado 2 y contraseña de activación.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenCircuito}}/pesaje-inicial",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenCircuito}}",
+								"pesaje-inicial"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tara\": 8500\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1.3 Validar contraseña (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Preset 10000\", () => pm.expect(pm.response.json().preset).to.eql(10000));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "La estación de carga valida la contraseña y recibe el preset.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenCircuito}}/validar-password",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenCircuito}}",
+								"validar-password"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"password\": {{passwordActivacion}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1.4 Lectura 1 del caudalímetro (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Masa 1000\", () => pm.expect(pm.response.json().masaAcumulada).to.eql(1000));",
+									"pm.test(\"La primera lectura se guarda en el detalle\", () => pm.expect(pm.response.json().guardadoEnDetalle).to.eql(true));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Lectura del caudalímetro (token de caudalimetro).",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenCircuito}}/datos-carga",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenCircuito}}",
+								"datos-carga"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"masaAcumulada\": 1000,\n  \"densidad\": 0.54,\n  \"temperatura\": 18.0,\n  \"caudal\": 3000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1.5 Lectura 2 del caudalímetro (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Masa 3000\", () => pm.expect(pm.response.json().masaAcumulada).to.eql(3000));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Lectura del caudalímetro (token de caudalimetro).",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenCircuito}}/datos-carga",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenCircuito}}",
+								"datos-carga"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"masaAcumulada\": 3000,\n  \"densidad\": 0.542,\n  \"temperatura\": 18.5,\n  \"caudal\": 3100\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1.6 Lectura 3 del caudalímetro (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Masa 5500\", () => pm.expect(pm.response.json().masaAcumulada).to.eql(5500));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Lectura del caudalímetro (token de caudalimetro).",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenCircuito}}/datos-carga",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenCircuito}}",
+								"datos-carga"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"masaAcumulada\": 5500,\n  \"densidad\": 0.544,\n  \"temperatura\": 19.0,\n  \"caudal\": 3200\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1.7 Lectura 4 del caudalímetro (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Masa 8000\", () => pm.expect(pm.response.json().masaAcumulada).to.eql(8000));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Lectura del caudalímetro (token de caudalimetro).",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenCircuito}}/datos-carga",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenCircuito}}",
+								"datos-carga"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"masaAcumulada\": 8000,\n  \"densidad\": 0.546,\n  \"temperatura\": 19.5,\n  \"caudal\": 3300\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1.8 Lectura 5 del caudalímetro (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Masa 10000\", () => pm.expect(pm.response.json().masaAcumulada).to.eql(10000));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Lectura del caudalímetro (token de caudalimetro).",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenCircuito}}/datos-carga",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenCircuito}}",
+								"datos-carga"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"masaAcumulada\": 10000,\n  \"densidad\": 0.548,\n  \"temperatura\": 20.0,\n  \"caudal\": 3400\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1.9 Cierre (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"const r = pm.response.json();",
+									"pm.test(\"Estado 3\", () => pm.expect(r.estado).to.eql(3));",
+									"pm.test(\"Última masa 10000\", () => pm.expect(r.ultimaMasaAcumulada).to.eql(10000));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "El operador cierra la orden: estado 3.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenCircuito}}/cierre",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenCircuito}}",
+								"cierre"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1.10 Pesaje final y conciliación (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"const c = pm.response.json();",
+									"pm.test(\"Pesaje inicial = tara\", () => pm.expect(c.pesajeInicial).to.eql(8500));",
+									"pm.test(\"Pesaje final\", () => pm.expect(c.pesajeFinal).to.eql(18600));",
+									"pm.test(\"Producto cargado = última masa\", () => pm.expect(c.productoCargado).to.eql(10000));",
+									"pm.test(\"Neto = final - tara\", () => pm.expect(c.netoPorBalanza).to.eql(18600 - 8500));",
+									"pm.test(\"Diferencia = neto - producto\", () => pm.expect(c.diferenciaBalanzaCaudalimetro).to.eql(10100 - 10000));",
+									"// Los promedios dependen de cuántas lecturas se guardaron en el detalle (frecuencia de 10 s): se controla el rango",
+									"pm.test(\"Promedio de temperatura\", () => pm.expect(c.promedioTemperatura).to.be.within(18, 20));",
+									"pm.test(\"Promedio de densidad\", () => pm.expect(c.promedioDensidad).to.be.within(0.54, 0.548));",
+									"pm.test(\"Promedio de caudal\", () => pm.expect(c.promedioCaudal).to.be.within(3000, 3400));",
+									"pm.environment.set(\"conciliacion\", JSON.stringify(c));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "La balanza manda el pesaje final: estado 4 y conciliación.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenCircuito}}/pesaje-final",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenCircuito}}",
+								"pesaje-final"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pesajeFinal\": 18600\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "1.11 Consulta de conciliación (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Igual a la del pesaje final\", () => pm.expect(pm.response.json()).to.eql(JSON.parse(pm.environment.get(\"conciliacion\"))));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"description": "Misma conciliación que devolvió el pesaje final.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenCircuito}}/conciliacion",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenCircuito}}",
+								"conciliacion"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "2 · Errores por etapa",
+			"description": "Otra orden que avanza estado por estado; en cada uno se prueba lo que no se puede hacer.",
+			"item": [
+				{
+					"name": "2.1 Recepción de otra orden (201)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+									"pm.environment.set(\"numeroOrdenErrores\", pm.environment.get(\"numeroOrden\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Orden para recorrer los errores de cada estado.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAM-{{sufijo}}\", \"patente\": \"P{{sufijo}}\", \"descripcion\": \"Scania\", \"cisternas\": [{ \"nombre\": \"Cisterna 1\", \"capacidadLitros\": 10000 }, { \"nombre\": \"Cisterna 2\", \"capacidadLitros\": 5000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Perez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SRL\", \"contacto\": \"compras@refinor.com\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.2 409 orden duplicada",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: Ya existe la orden\", () => pm.expect(pm.response.json().message).to.include(\"Ya existe la orden\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Mismo número de orden que la 2.1.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrdenErrores}},\n  \"camion\": { \"codigoExterno\": \"CAM-{{sufijo}}\", \"patente\": \"P{{sufijo}}\", \"descripcion\": \"Scania\", \"cisternas\": [{ \"nombre\": \"Cisterna 1\", \"capacidadLitros\": 10000 }, { \"nombre\": \"Cisterna 2\", \"capacidadLitros\": 5000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Perez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SRL\", \"contacto\": \"compras@refinor.com\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.3 409 cierre en estado 1",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: está en estado 1\", () => pm.expect(pm.response.json().message).to.include(\"está en estado 1\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Todavía no tiene pesaje inicial.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/cierre",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"cierre"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.4 400 tara en 0",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Mensaje: Falta la tara\", () => pm.expect(pm.response.json().message).to.include(\"Falta la tara\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "La tara tiene que ser mayor a 0.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/pesaje-inicial",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"pesaje-inicial"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tara\": 0\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.5 Pesaje inicial (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Pasa la orden a estado 2.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/pesaje-inicial",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"pesaje-inicial"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tara\": 8500\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.6 409 pesaje inicial repetido",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: está en estado 2\", () => pm.expect(pm.response.json().message).to.include(\"está en estado 2\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "La orden ya está en estado 2.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/pesaje-inicial",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"pesaje-inicial"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tara\": 8500\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.7 401 contraseña incorrecta",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 401\", () => pm.response.to.have.status(401));",
+									"pm.test(\"Mensaje: Contraseña de activación incorrecta\", () => pm.expect(pm.response.json().message).to.include(\"Contraseña de activación incorrecta\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Una contraseña de 1 dígito nunca es la generada.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/validar-password",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"validar-password"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"password\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.8 409 cierre sin lecturas",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: no recibió datos de carga\", () => pm.expect(pm.response.json().message).to.include(\"no recibió datos de carga\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Estado 2, pero nunca recibió datos de carga.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/cierre",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"cierre"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.9 409 pesaje final en estado 2",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: está en estado 2\", () => pm.expect(pm.response.json().message).to.include(\"está en estado 2\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "El pesaje final requiere estado 3.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/pesaje-final",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"pesaje-final"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pesajeFinal\": 18600\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.10 409 conciliación antes del estado 4",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: está en estado 2\", () => pm.expect(pm.response.json().message).to.include(\"está en estado 2\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"description": "Solo se consulta con la orden finalizada.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/conciliacion",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"conciliacion"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.11 Lectura válida (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Primera lectura de esta orden.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/datos-carga",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"datos-carga"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"masaAcumulada\": 2000,\n  \"densidad\": 0.54,\n  \"temperatura\": 18.5,\n  \"caudal\": 3000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.12 400 lectura con caudal 0",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Mensaje: el caudal debe ser mayor a 0\", () => pm.expect(pm.response.json().message).to.include(\"el caudal debe ser mayor a 0\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Lectura descartada.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/datos-carga",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"datos-carga"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"masaAcumulada\": 2500,\n  \"densidad\": 0.54,\n  \"temperatura\": 18.5,\n  \"caudal\": 0\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.13 400 lectura con masa menor",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Mensaje: es menor a la última recibida\", () => pm.expect(pm.response.json().message).to.include(\"es menor a la última recibida\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "La masa acumulada nunca baja.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/datos-carga",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"datos-carga"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"masaAcumulada\": 1500,\n  \"densidad\": 0.54,\n  \"temperatura\": 18.5,\n  \"caudal\": 3000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.14 Cierre (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Pasa la orden a estado 3.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/cierre",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"cierre"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.15 409 lectura a una orden cerrada",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: está en estado 3\", () => pm.expect(pm.response.json().message).to.include(\"está en estado 3\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "El caudalímetro ya no puede mandar datos.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/datos-carga",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"datos-carga"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"masaAcumulada\": 3000,\n  \"densidad\": 0.54,\n  \"temperatura\": 18.5,\n  \"caudal\": 3000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.16 409 cerrar de nuevo",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: está en estado 3\", () => pm.expect(pm.response.json().message).to.include(\"está en estado 3\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "La orden ya está en estado 3.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/cierre",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"cierre"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.17 400 pesaje final menor o igual a la tara",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Mensaje: El pesaje final\", () => pm.expect(pm.response.json().message).to.include(\"El pesaje final\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Tara 8500, pesaje final 8000.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/pesaje-final",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"pesaje-final"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pesajeFinal\": 8000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.18 Pesaje final (200)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Pasa la orden a estado 4.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/pesaje-final",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"pesaje-final"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pesajeFinal\": 10500\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.19 409 pesaje final repetido",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: está en estado 4\", () => pm.expect(pm.response.json().message).to.include(\"está en estado 4\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "La orden ya está en estado 4.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/pesaje-final",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"pesaje-final"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pesajeFinal\": 10500\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "2.20 404 orden inexistente",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 404\", () => pm.response.to.have.status(404));",
+									"pm.test(\"Mensaje: No se encuentra la orden\", () => pm.expect(pm.response.json().message).to.include(\"No se encuentra la orden\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"description": "Número de orden que no existe.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/999999999999/conciliacion",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"999999999999",
+								"conciliacion"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "3 · Roles",
+			"description": "403 por rol y 401 sin token. Usa la orden de la carpeta 2.",
+			"item": [
+				{
+					"name": "3.1 403 recepción con el caudalímetro",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 403\", () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Recibir órdenes es solo para OPERADOR o ADMIN.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAM-{{sufijo}}\", \"patente\": \"P{{sufijo}}\", \"descripcion\": \"Scania\", \"cisternas\": [{ \"nombre\": \"Cisterna 1\", \"capacidadLitros\": 10000 }, { \"nombre\": \"Cisterna 2\", \"capacidadLitros\": 5000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Perez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SRL\", \"contacto\": \"compras@refinor.com\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3.2 403 lectura con el operador",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 403\", () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Las lecturas son solo para INTEGRATION o ADMIN.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/datos-carga",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"datos-carga"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"masaAcumulada\": 1000,\n  \"densidad\": 0.54,\n  \"temperatura\": 18.5,\n  \"caudal\": 3000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3.3 403 cierre con el caudalímetro",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 403\", () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "El cierre es solo para OPERADOR o ADMIN.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/cierre",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"cierre"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3.4 403 pesaje final con el caudalímetro",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 403\", () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "El pesaje final es solo para OPERADOR o ADMIN.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/pesaje-final",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"pesaje-final"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pesajeFinal\": 10500\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenCaudalimetro}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "3.5 401 sin token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 401\", () => pm.response.to.have.status(401));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"description": "Cualquier endpoint (menos login y Swagger) requiere token.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes/{{numeroOrdenErrores}}/conciliacion",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes",
+								"{{numeroOrdenErrores}}",
+								"conciliacion"
+							]
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "4 · Sincronización de entidades",
+			"description": "Ticket 04: entidades existentes, identificadores alternativos y conflictos.",
+			"item": [
+				{
+					"name": "4.1 Alta con entidades nuevas (201)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 201\", () => pm.response.to.have.status(201));"
+								]
+							}
+						},
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.environment.set(\"sufijo\", Date.now());"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Crea la orden y todas sus entidades con un sufijo nuevo.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAM-{{sufijo}}\", \"patente\": \"P{{sufijo}}\", \"descripcion\": \"Scania\", \"cisternas\": [{ \"nombre\": \"Cisterna 1\", \"capacidadLitros\": 10000 }, { \"nombre\": \"Cisterna 2\", \"capacidadLitros\": 5000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Perez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SRL\", \"contacto\": \"compras@refinor.com\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.2 Entidades existentes se actualizan (201)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 201\", () => pm.response.to.have.status(201));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Mismos códigos externos con datos cambiados: patente, descripción, una sola cisterna (reemplaza las dos), apellido, cliente sin contacto.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAM-{{sufijo}}\", \"patente\": \"Q{{sufijo}}\", \"descripcion\": \"Scania renovado\", \"cisternas\": [{ \"nombre\": \"Unica\", \"capacidadLitros\": 20000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Gomez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SA\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano comercial\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.3 Camión por patente y chofer por documento (201)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 201\", () => pm.response.to.have.status(201));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Sin código externo: se encuentran por su identificador alternativo.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"patente\": \"Q{{sufijo}}\", \"descripcion\": \"Scania (por patente)\", \"cisternas\": [{ \"nombre\": \"Unica\", \"capacidadLitros\": 20000 }] },\n  \"chofer\": { \"nombre\": \"Juan\", \"apellido\": \"Lopez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SA\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano comercial\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.4 400 cliente sin código externo",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Mensaje: Falta el código externo del cliente\", () => pm.expect(pm.response.json().message).to.include(\"Falta el código externo del cliente\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "La razón social no es única.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAM-{{sufijo}}\", \"patente\": \"Q{{sufijo}}\", \"descripcion\": \"Scania renovado\", \"cisternas\": [{ \"nombre\": \"Unica\", \"capacidadLitros\": 20000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Gomez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"razonSocial\": \"Refinor SA\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano comercial\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.5 400 producto sin código externo",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Mensaje: Falta el código externo del producto\", () => pm.expect(pm.response.json().message).to.include(\"Falta el código externo del producto\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "El nombre no es único.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAM-{{sufijo}}\", \"patente\": \"Q{{sufijo}}\", \"descripcion\": \"Scania renovado\", \"cisternas\": [{ \"nombre\": \"Unica\", \"capacidadLitros\": 20000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Gomez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SA\" },\n  \"producto\": { \"nombre\": \"Propano\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.6 400 chofer sin código ni documento",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Mensaje: El chofer necesita código externo o documento\", () => pm.expect(pm.response.json().message).to.include(\"El chofer necesita código externo o documento\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Necesita al menos uno de los dos.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAM-{{sufijo}}\", \"patente\": \"Q{{sufijo}}\", \"descripcion\": \"Scania renovado\", \"cisternas\": [{ \"nombre\": \"Unica\", \"capacidadLitros\": 20000 }] },\n  \"chofer\": { \"nombre\": \"Juan\", \"apellido\": \"Gomez\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SA\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano comercial\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.7 400 camión sin cisternas",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Mensaje: al menos una cisterna\", () => pm.expect(pm.response.json().message).to.include(\"al menos una cisterna\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Al menos una cisterna.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAM-{{sufijo}}\", \"patente\": \"Q{{sufijo}}\", \"cisternas\": [] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Gomez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SA\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano comercial\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.8 Alta de un segundo camión (201)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 201\", () => pm.response.to.have.status(201));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Prepara el 4.9.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAMZ-{{sufijo}}\", \"patente\": \"Z{{sufijo}}\", \"cisternas\": [{ \"nombre\": \"Unica\", \"capacidadLitros\": 8000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Gomez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SA\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano comercial\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.9 409 camión existente con la patente de otro",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: pertenece a otro camión\", () => pm.expect(pm.response.json().message).to.include(\"pertenece a otro camión\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "El cliente CLIR es nuevo y no debe quedar guardado (rollback).",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAMZ-{{sufijo}}\", \"patente\": \"Q{{sufijo}}\", \"cisternas\": [{ \"nombre\": \"Unica\", \"capacidadLitros\": 8000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Gomez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLIR-{{sufijo}}\", \"razonSocial\": \"No debe quedar guardado\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano comercial\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.10 409 camión nuevo con una patente existente",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: pertenece a otro camión\", () => pm.expect(pm.response.json().message).to.include(\"pertenece a otro camión\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Código externo nuevo, patente de otro camión.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAMNEW-{{sufijo}}\", \"patente\": \"Q{{sufijo}}\", \"cisternas\": [{ \"nombre\": \"Unica\", \"capacidadLitros\": 8000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHO-{{sufijo}}\", \"nombre\": \"Juan\", \"apellido\": \"Gomez\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SA\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano comercial\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "4.11 409 chofer nuevo con el documento de otro",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Mensaje: pertenece a otro chofer\", () => pm.expect(pm.response.json().message).to.include(\"pertenece a otro chofer\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"description": "Código externo nuevo, documento de otro chofer.",
+						"url": {
+							"raw": "{{urlBase}}/api/v1/ordenes",
+							"host": [
+								"{{urlBase}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"ordenes"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"numeroOrden\": {{numeroOrden}},\n  \"camion\": { \"codigoExterno\": \"CAM-{{sufijo}}\", \"patente\": \"Q{{sufijo}}\", \"descripcion\": \"Scania renovado\", \"cisternas\": [{ \"nombre\": \"Unica\", \"capacidadLitros\": 20000 }] },\n  \"chofer\": { \"codigoExterno\": \"CHONEW-{{sufijo}}\", \"nombre\": \"Ana\", \"apellido\": \"Diaz\", \"documento\": \"D{{sufijo}}\" },\n  \"cliente\": { \"codigoExterno\": \"CLI-{{sufijo}}\", \"razonSocial\": \"Refinor SA\" },\n  \"producto\": { \"codigoExterno\": \"PRO-{{sufijo}}\", \"nombre\": \"Propano\", \"descripcion\": \"GLP propano comercial\" },\n  \"fechaCargaPrevista\": \"{{fechaCargaPrevista}}\",\n  \"preset\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Corre antes de cada request: número de orden nuevo y fecha de carga prevista = mañana a las 08:00",
+					"pm.environment.set(\"numeroOrden\", Date.now());",
+					"const m = new Date(Date.now() + 24 * 60 * 60 * 1000);",
+					"const p = n => String(n).padStart(2, \"0\");",
+					"pm.environment.set(\"fechaCargaPrevista\", `${m.getFullYear()}-${p(m.getMonth() + 1)}-${p(m.getDate())}T08:00:00`);",
+					"if (!pm.environment.get(\"sufijo\")) { pm.environment.set(\"sufijo\", Date.now()); }"
+				]
+			}
+		}
+	]
+}

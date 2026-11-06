@@ -100,7 +100,7 @@ Cada transición se registra en `orden_estado_log`, en la misma transacción.
 - Rutas públicas: el login, Swagger (`/swagger-ui.html`, `/v3/api-docs/**`) y `/error`. Todo lo demás requiere token.
 - Los endpoints se restringen por rol con `@PreAuthorize("hasRole('OPERADOR')")` (Spring agrega el prefijo `ROLE_`).
 - Los controllers heredan de `BaseRestController` y obtienen el usuario logueado con `getUserLogged()`.
-- `/api/v1/prueba-auth` es un endpoint temporal para probar roles; en el ticket 10 se decide si queda.
+- El endpoint temporal `/api/v1/prueba-auth` se eliminó en el ticket 10: los roles se prueban con los endpoints reales (carpeta "3 · Roles" de la colección de Postman).
 
 ## 1. Recepción de la orden
 
@@ -305,3 +305,25 @@ Cada ticket agrega acá las decisiones que tomó durante el desarrollo y cuáles
 ### Impacto en otros tickets
 
 - **10 (Postman):** circuito → pesaje final **200** con la conciliación (guardar los valores para comparar) → consulta de conciliación **200** con los mismos valores. Errores: pesaje ≤ tara → **400**; orden en estado 2 → **409**; consulta de una orden que no está en estado 4 → **409**; orden inexistente → **404**; pesaje final con el token de `caudalimetro` → **403**.
+
+## Ticket 10 · Circuito completo en Postman (Sebastián Caparroz)
+
+### Decisiones
+
+- **Archivos** en `postman/`: `GasLogix.postman_collection.json` (colección) y `GasLogix-local.postman_environment.json` (entorno "GasLogix local"). Se importan los dos en Postman (**Import**) y se elige el entorno arriba a la derecha.
+- **Entorno:** `urlBase` (`http://localhost:8080`; para la VM se duplica el entorno y se cambia solo esa variable), usuarios y contraseñas de prueba de `data.sql`, y variables que llenan los scripts: `token`, `tokenCaudalimetro`, `numeroOrden`, `fechaCargaPrevista`, `sufijo`, `numeroOrdenCircuito`, `passwordActivacion`, `conciliacion`, `numeroOrdenErrores`.
+- **Auth:** la colección usa Bearer `{{token}}` (operador) y todos los requests la heredan; las lecturas y las pruebas de rol del caudalímetro usan `{{tokenCaudalimetro}}` en su propia pestaña Authorization.
+- **Script de la colección** (corre antes de cada request): `numeroOrden` = `Date.now()` y `fechaCargaPrevista` = mañana a las 08:00, así la colección se puede repetir sin choques ni fechas pasadas. Cada request que crea una orden guarda su número en otra variable (`numeroOrdenCircuito`, `numeroOrdenErrores`) porque `numeroOrden` cambia en cada request.
+- **Carpetas** (se corren en orden con **Run collection**):
+  - `0 · Login`: operador y caudalímetro.
+  - `1 · Circuito completo`: recepción 201 → pesaje inicial 200 → validar contraseña 200 → 5 lecturas 200 → cierre 200 → pesaje final 200 → consulta de conciliación 200 (igual a la del pesaje final).
+  - `2 · Errores por etapa`: otra orden que avanza estado por estado y en cada uno prueba lo que no se puede hacer (duplicada, estados inválidos, tara 0, contraseña incorrecta, lecturas descartadas, pesaje ≤ tara, inexistente).
+  - `3 · Roles`: 403 del caudalímetro en recepción, cierre y pesaje final; 403 del operador en lecturas; 401 sin token.
+  - `4 · Sincronización de entidades`: los casos del ticket 04.
+- **Tests de la conciliación:** pesaje inicial = tara, producto cargado = última masa, neto = final − tara, diferencia = neto − producto. Los promedios solo se controlan dentro del rango de las lecturas enviadas: cuántas se guardan en `detalle_carga` depende de la frecuencia (10 s) y de lo que tarde el Runner.
+- **`/api/v1/prueba-auth` eliminado** (`PruebaAuthRestController`): era temporal y los roles ahora se prueban con los endpoints reales.
+
+### Impacto en otros tickets
+
+- **Final:** los endpoints nuevos (usuarios, alarmas) se agregan como carpetas nuevas de esta colección, con sus tests.
+- **Despliegue en la VM:** duplicar el entorno, cambiar `urlBase` y las contraseñas si se cambian en el despliegue.
