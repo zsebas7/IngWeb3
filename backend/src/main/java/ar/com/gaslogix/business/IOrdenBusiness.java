@@ -26,4 +26,8 @@ public interface IOrdenBusiness {
 	// Punto 3.a: valida la contraseña de activación de una orden en estado 2 (no cambia el estado)
 	public Orden validarPasswordActivacion(Long numeroOrden, Integer password) throws BadRequestException,
 			NotFoundException, InvalidStateException, BadPasswordException, BusinessException;
+
+	// Punto 4: cierra una orden en carga (estado 2 con al menos una lectura) y la pasa a estado 3
+	public Orden cerrarOrden(Long numeroOrden, Usuario usuario)
+			throws NotFoundException, InvalidStateException, BusinessException;
 }

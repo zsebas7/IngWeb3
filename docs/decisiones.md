@@ -270,3 +270,19 @@ Cada ticket agrega acá las decisiones que tomó durante el desarrollo y cuáles
 - **09 (conciliación):** los promedios salen de `detalle_carga` (`DetalleCargaRepository`); el producto cargado es `orden.ultimaMasaAcumulada`.
 - **10 (Postman):** las lecturas se mandan con el token de `caudalimetro`. La prueba de roles se hace con él: `POST /api/v1/ordenes` → 403, y con el token de `operador` el endpoint de lecturas → 403. También van los requests de lectura válida y de cada descarte (400).
 - **Base de datos:** como cambia `data.sql`, después de mergear este ticket hay que recrear la base desde `infra/` con `docker compose down -v` y `docker compose up -d --build` (borra los datos de prueba) y volver a hacer login.
+
+## Ticket 08 · Cierre de orden (Sebastián Caparroz)
+
+### Decisiones
+
+- **Endpoint** `POST /api/v1/ordenes/{numeroOrden}/cierre` en `OrdenRestController`, solo `ROLE_OPERADOR` o `ROLE_ADMIN` (el caudalímetro recibe **403**). Sin body. Es POST con un sustantivo en la URL, como `pesaje-inicial` y `validar-password`.
+- Responde **200** con `CierreOrdenResponse`: `numeroOrden`, `estado` (3), `ultimaMasaAcumulada` y `fechaFinCarga`. No hay columna de fecha de cierre: la fecha queda en `orden_estado_log`.
+- **Validaciones** en `OrdenBusiness.cerrarOrden`, en este orden: orden inexistente → **404** (`cargarPorNumeroOrden`); orden que no está en estado 2 → **409**; orden en estado 2 que nunca recibió lecturas (`fechaInicioCarga == null`) → **409**. Las dos son `InvalidStateException`.
+- Estado 3 + log 2 → 3 con el usuario logueado ("Orden cerrada para carga") en una transacción (`@Transactional(rollbackFor = Exception.class)`).
+- **Lecturas después del cierre:** no hizo falta código nuevo; `CargaBusiness` (ticket 07) ya responde **409** a cualquier orden que no esté en estado 2.
+- **Hueco conocido (concurrencia):** si una lectura llega mientras se cierra la orden, el `ordenDAO.save` de `CargaBusiness` guarda la orden completa con el estado que leyó (2) y podría pisar el estado 3. Resolverlo requiere bloqueo optimista (`@Version`, con columna nueva) o pesimista (`@Lock`), que no se vieron en la materia; queda anotado.
+
+### Impacto en otros tickets
+
+- **09 (pesaje final):** la orden llega en estado 3 con `ultimaMasaAcumulada` (producto cargado) y `fechaFinCarga` definitivas, porque ya no entran lecturas.
+- **10 (Postman):** circuito → cierre **200**; cerrar de nuevo → **409**; lectura después del cierre → **409**; orden sin lecturas → **409**; orden inexistente → **404**; cierre con el token de `caudalimetro` → **403**.

@@ -164,6 +164,34 @@ public class OrdenBusiness implements IOrdenBusiness {
 		return orden;
 	}
 
+	@Override
+	@Transactional(rollbackFor = Exception.class)
+	public Orden cerrarOrden(Long numeroOrden, Usuario usuario)
+			throws NotFoundException, InvalidStateException, BusinessException {
+		Orden orden = cargarPorNumeroOrden(numeroOrden);
+		if (orden.getEstado() != Constants.ESTADO_CON_PESAJE_INICIAL) {
+			throw InvalidStateException.builder().message("La orden número " + numeroOrden + " está en estado "
+					+ orden.getEstado() + "; el cierre requiere estado 2").build();
+		}
+		// La primera lectura válida fija la fecha de inicio de carga (ticket 07)
+		if (orden.getFechaInicioCarga() == null) {
+			throw InvalidStateException.builder().message("La orden número " + numeroOrden
+					+ " no recibió datos de carga; no se puede cerrar").build();
+		}
+
+		try {
+			orden.setEstado(Constants.ESTADO_CERRADA_PARA_CARGA);
+			orden = ordenDAO.save(orden);
+
+			registrarCambioEstado(orden, Constants.ESTADO_CON_PESAJE_INICIAL, Constants.ESTADO_CERRADA_PARA_CARGA,
+					LocalDateTime.now(), usuario, "Orden cerrada para carga");
+			return orden;
+		} catch (Exception e) {
+			log.error(e.getMessage(), e);
+			throw BusinessException.builder().ex(e).build();
+		}
+	}
+
 	// JSON → Orden con el deserializador propio; cualquier error de formato es culpa del cliente → 400
 	private Orden leerJson(String json) throws BadRequestException {
 		if (json == null || json.isBlank()) {
