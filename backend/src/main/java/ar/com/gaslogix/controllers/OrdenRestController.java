@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,6 +22,8 @@ import ar.com.gaslogix.business.exception.InvalidStateException;
 import ar.com.gaslogix.business.exception.NotFoundException;
 import ar.com.gaslogix.model.Orden;
 import ar.com.gaslogix.model.dto.CierreOrdenResponse;
+import ar.com.gaslogix.model.dto.ConciliacionResponse;
+import ar.com.gaslogix.model.dto.PesajeFinalRequest;
 import ar.com.gaslogix.model.dto.PesajeInicialRequest;
 import ar.com.gaslogix.model.dto.PesajeInicialResponse;
 import ar.com.gaslogix.model.dto.ValidacionPasswordRequest;
@@ -197,6 +200,71 @@ public class OrdenRestController extends BaseRestController {
 			Orden orden = ordenBusiness.cerrarOrden(numeroOrden, getUserLogged());
 			return new ResponseEntity<>(new CierreOrdenResponse(orden.getNumeroOrden(), orden.getEstado(),
 					orden.getUltimaMasaAcumulada(), orden.getFechaFinCarga()), HttpStatus.OK);
+		} catch (NotFoundException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.NOT_FOUND, e, e.getMessage()), HttpStatus.NOT_FOUND);
+		} catch (InvalidStateException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.CONFLICT, e, e.getMessage()), HttpStatus.CONFLICT);
+		} catch (BusinessException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.INTERNAL_SERVER_ERROR, e, e.getMessage()),
+					HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	@Operation(operationId = "pesaje-final", summary = "Punto 5: registra el pesaje final de una orden cerrada, la pasa a estado 4 y devuelve la conciliación.")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Pesaje registrado. Devuelve la conciliación.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = ConciliacionResponse.class)) }),
+			@ApiResponse(responseCode = "400", description = "Falta el pesaje final, no es mayor a 0 o no es mayor a la tara.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "401", description = "Falta el token o es inválido.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "403", description = "El usuario no tiene rol OPERADOR ni ADMIN.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "404", description = "No existe una orden con ese número.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "409", description = "La orden no está en estado 3.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "500", description = "Error interno.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }) })
+	@PreAuthorize("hasRole('OPERADOR') or hasRole('ADMIN')")
+	@PostMapping(value = Constants.URL_ORDENES + "/{numeroOrden}/pesaje-final",
+			consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<?> registrarPesajeFinal(@Parameter(description = "Número de orden de SAP.") @PathVariable Long numeroOrden,
+			@RequestBody PesajeFinalRequest pesaje) {
+		try {
+			return new ResponseEntity<>(
+					ordenBusiness.registrarPesajeFinal(numeroOrden, pesaje.pesajeFinal(), getUserLogged()), HttpStatus.OK);
+		} catch (BadRequestException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.BAD_REQUEST, e, e.getMessage()), HttpStatus.BAD_REQUEST);
+		} catch (NotFoundException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.NOT_FOUND, e, e.getMessage()), HttpStatus.NOT_FOUND);
+		} catch (InvalidStateException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.CONFLICT, e, e.getMessage()), HttpStatus.CONFLICT);
+		} catch (BusinessException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.INTERNAL_SERVER_ERROR, e, e.getMessage()),
+					HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	@Operation(operationId = "conciliacion", summary = "Punto 5: consulta la conciliación de una orden finalizada (estado 4).")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Conciliación de la orden.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = ConciliacionResponse.class)) }),
+			@ApiResponse(responseCode = "401", description = "Falta el token o es inválido.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "403", description = "El usuario no tiene rol OPERADOR ni ADMIN.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "404", description = "No existe una orden con ese número.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "409", description = "La orden no está en estado 4.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "500", description = "Error interno.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }) })
+	@PreAuthorize("hasRole('OPERADOR') or hasRole('ADMIN')")
+	@GetMapping(value = Constants.URL_ORDENES + "/{numeroOrden}/conciliacion", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<?> obtenerConciliacion(@Parameter(description = "Número de orden de SAP.") @PathVariable Long numeroOrden) {
+		try {
+			return new ResponseEntity<>(ordenBusiness.obtenerConciliacion(numeroOrden), HttpStatus.OK);
 		} catch (NotFoundException e) {
 			return new ResponseEntity<>(response.build(HttpStatus.NOT_FOUND, e, e.getMessage()), HttpStatus.NOT_FOUND);
 		} catch (InvalidStateException e) {

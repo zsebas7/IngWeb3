@@ -27,8 +27,8 @@ ar.com.gaslogix
 ├── security/             SecurityConfiguration, JsonSecurityErrorHandler (401/403)
 ├── config/               OpenApiConfig
 ├── controllers/          Constants, BaseRestController, AuthRestController,
-│                         OrdenRestController   (1 recepción, 4 cierre, conciliación)
-│                         PesajeRestController  (2 pesaje inicial, 5 pesaje final)
+│                         OrdenRestController   (1 recepción, 2 pesaje inicial, 3.a contraseña, 4 cierre,
+│                                                5 pesaje final y conciliación)
 │                         CargaRestController   (3.b datos de carga)
 ├── business/             Interfaces IXxxBusiness + implementaciones (lógica y máquina de estados)
 │   └── exception/        BusinessException, NotFoundException, FoundException, ...
@@ -286,3 +286,22 @@ Cada ticket agrega acá las decisiones que tomó durante el desarrollo y cuáles
 
 - **09 (pesaje final):** la orden llega en estado 3 con `ultimaMasaAcumulada` (producto cargado) y `fechaFinCarga` definitivas, porque ya no entran lecturas.
 - **10 (Postman):** circuito → cierre **200**; cerrar de nuevo → **409**; lectura después del cierre → **409**; orden sin lecturas → **409**; orden inexistente → **404**; cierre con el token de `caudalimetro` → **403**.
+
+## Ticket 09 · Pesaje final y conciliación (Valentina Beas)
+
+### Decisiones
+
+- **Endpoints** en `OrdenRestController`, solo `ROLE_OPERADOR` o `ROLE_ADMIN` (el caudalímetro recibe **403**):
+  - `POST /api/v1/ordenes/{numeroOrden}/pesaje-final` con body `{"pesajeFinal": 18500}` (`PesajeFinalRequest`) → **200** con la conciliación.
+  - `GET /api/v1/ordenes/{numeroOrden}/conciliacion` → **200** con la conciliación. Es GET porque solo consulta.
+- No se creó `PesajeRestController`: el pesaje inicial (ticket 05) ya estaba en `OrdenRestController` y los dos pesajes quedan juntos.
+- **Conciliación** (`ConciliacionResponse`, no se guarda en la BD, se calcula en cada llamada con `armarConciliacion`): `numeroOrden`, `pesajeInicial` (tara), `pesajeFinal`, `productoCargado` (`ultimaMasaAcumulada`), `netoPorBalanza` (final − tara), `diferenciaBalanzaCaudalimetro` (neto − producto cargado, puede ser negativa) y `promedioTemperatura`, `promedioDensidad`, `promedioCaudal`.
+- **Promedios** con `AVG` en MySQL: tres `@Query` en `DetalleCargaRepository` (`promedioTemperatura`, `promedioDensidad`, `promedioCaudal`). JPQL devuelve `Double`; se pasa a `BigDecimal` con los decimales de la columna (2; densidad 4), redondeo `HALF_UP`. Se descartó traer todos los detalles y promediar en Java: más código y más datos viajando.
+- Toda orden en estado 3 tiene al menos un detalle (el cierre exige lecturas y la primera siempre se guarda), así que los promedios no quedan vacíos.
+- **Validaciones del pesaje final** en `OrdenBusiness.registrarPesajeFinal`, en este orden: pesaje faltante o ≤ 0 → **400**; orden inexistente → **404**; orden que no está en estado 3 → **409**; pesaje ≤ tara → **400**.
+- Pesaje final, fecha, estado 4 y log 3 → 4 con el usuario logueado ("Pesaje final registrado") en una transacción (`@Transactional(rollbackFor = Exception.class)`).
+- **Consulta** en `OrdenBusiness.obtenerConciliacion`: orden inexistente → **404**; orden que no está en estado 4 → **409**. Solo lectura, sin `@Transactional`.
+
+### Impacto en otros tickets
+
+- **10 (Postman):** circuito → pesaje final **200** con la conciliación (guardar los valores para comparar) → consulta de conciliación **200** con los mismos valores. Errores: pesaje ≤ tara → **400**; orden en estado 2 → **409**; consulta de una orden que no está en estado 4 → **409**; orden inexistente → **404**; pesaje final con el token de `caudalimetro` → **403**.
