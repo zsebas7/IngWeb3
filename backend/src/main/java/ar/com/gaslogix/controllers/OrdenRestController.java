@@ -20,6 +20,7 @@ import ar.com.gaslogix.business.exception.FoundException;
 import ar.com.gaslogix.business.exception.InvalidStateException;
 import ar.com.gaslogix.business.exception.NotFoundException;
 import ar.com.gaslogix.model.Orden;
+import ar.com.gaslogix.model.dto.CierreOrdenResponse;
 import ar.com.gaslogix.model.dto.PesajeInicialRequest;
 import ar.com.gaslogix.model.dto.PesajeInicialResponse;
 import ar.com.gaslogix.model.dto.ValidacionPasswordRequest;
@@ -165,6 +166,37 @@ public class OrdenRestController extends BaseRestController {
 			return new ResponseEntity<>(response.build(HttpStatus.BAD_REQUEST, e, e.getMessage()), HttpStatus.BAD_REQUEST);
 		} catch (BadPasswordException e) {
 			return new ResponseEntity<>(response.build(HttpStatus.UNAUTHORIZED, e, e.getMessage()), HttpStatus.UNAUTHORIZED);
+		} catch (NotFoundException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.NOT_FOUND, e, e.getMessage()), HttpStatus.NOT_FOUND);
+		} catch (InvalidStateException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.CONFLICT, e, e.getMessage()), HttpStatus.CONFLICT);
+		} catch (BusinessException e) {
+			return new ResponseEntity<>(response.build(HttpStatus.INTERNAL_SERVER_ERROR, e, e.getMessage()),
+					HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	@Operation(operationId = "cerrar-orden", summary = "Punto 4: cierra una orden en carga y la pasa a estado 3. Desde ese momento no acepta más lecturas.")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Orden cerrada. Devuelve el estado nuevo y la última masa acumulada.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = CierreOrdenResponse.class)) }),
+			@ApiResponse(responseCode = "401", description = "Falta el token o es inválido.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "403", description = "El usuario no tiene rol OPERADOR ni ADMIN.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "404", description = "No existe una orden con ese número.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "409", description = "La orden no está en estado 2 o todavía no recibió datos de carga.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }),
+			@ApiResponse(responseCode = "500", description = "Error interno.", content = {
+					@Content(mediaType = "application/json", schema = @Schema(implementation = StandartResponse.class)) }) })
+	@PreAuthorize("hasRole('OPERADOR') or hasRole('ADMIN')")
+	@PostMapping(value = Constants.URL_ORDENES + "/{numeroOrden}/cierre", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<?> cerrarOrden(@Parameter(description = "Número de orden de SAP.") @PathVariable Long numeroOrden) {
+		try {
+			Orden orden = ordenBusiness.cerrarOrden(numeroOrden, getUserLogged());
+			return new ResponseEntity<>(new CierreOrdenResponse(orden.getNumeroOrden(), orden.getEstado(),
+					orden.getUltimaMasaAcumulada(), orden.getFechaFinCarga()), HttpStatus.OK);
 		} catch (NotFoundException e) {
 			return new ResponseEntity<>(response.build(HttpStatus.NOT_FOUND, e, e.getMessage()), HttpStatus.NOT_FOUND);
 		} catch (InvalidStateException e) {
