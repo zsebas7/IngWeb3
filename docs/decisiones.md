@@ -116,6 +116,10 @@ Cada transición se registra en `orden_estado_log`, en la misma transacción.
 
   Si faltan el código externo y el identificador alternativo → **400**.
 - Si la patente recibida pertenece a otro camión → **409** (venga o no el código externo). Lo mismo con el documento del chofer.
+- **Camión con código externo o patente:** `camion.patente` admite NULL (igual que el código externo), pero tiene que venir al menos uno de los dos (→ **400**). Un texto vacío se toma como dato faltante y se guarda NULL. MySQL permite varios NULL en un `UNIQUE`.
+  - Sin patente no se busca por patente: `findByPatente(null)` genera `patente IS NULL` y encontraría cualquier otro camión sin patente (falso 409).
+  - No se vinculan registros distintos: si el código externo no existe y la patente es de otro camión → **409**, aunque ese camión no tenga código.
+  - Al actualizar, la patente **no se pisa con NULL**: si la orden trae solo el código externo, el camión conserva su patente.
 - Cisternas: se reemplaza la lista completa del camión por la recibida.
 - `orden.codigo_externo` es un código opcional del cliente, distinto de `numero_orden`; queda NULL si el cliente solo usa el número.
 - Orden duplicada → **409** si se repite `numero_orden`, o `codigo_externo` cuando no es NULL.

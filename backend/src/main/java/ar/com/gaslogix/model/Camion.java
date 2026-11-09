@@ -35,7 +35,7 @@ public class Camion {
 	@Column(length = 50, unique = true)
 	private String codigoExterno;
 
-	@Column(length = 20, nullable = false, unique = true)
+	@Column(length = 20, unique = true)
 	private String patente;
 
 	@Column(length = 255)

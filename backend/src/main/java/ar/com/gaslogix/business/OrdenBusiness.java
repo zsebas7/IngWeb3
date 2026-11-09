@@ -323,8 +323,15 @@ public class OrdenBusiness implements IOrdenBusiness {
 	}
 
 	private Camion obtenerOCrearCamion(Camion camion) throws BadRequestException, FoundException {
-		if (camion.getPatente() == null) {
-			throw BadRequestException.builder().message("Falta la patente del camión").build();
+		// Un texto vacío se guarda NULL para no chocar con el UNIQUE
+		if (camion.getPatente() != null && camion.getPatente().isBlank()) {
+			camion.setPatente(null);
+		}
+		if (camion.getCodigoExterno() != null && camion.getCodigoExterno().isBlank()) {
+			camion.setCodigoExterno(null);
+		}
+		if (camion.getPatente() == null && camion.getCodigoExterno() == null) {
+			throw BadRequestException.builder().message("El camión necesita código externo o patente").build();
 		}
 		if (camion.getCisternas().isEmpty()) {
 			throw BadRequestException.builder().message("El camión necesita al menos una cisterna").build();
@@ -335,7 +342,10 @@ public class OrdenBusiness implements IOrdenBusiness {
 			}
 		}
 
-		Optional<Camion> conPatente = camionDAO.findByPatente(camion.getPatente());
+		// Sin patente no se busca: findByPatente(null) hace "patente IS NULL" y encontraría cualquier camión sin patente
+		Optional<Camion> conPatente = camion.getPatente() != null
+				? camionDAO.findByPatente(camion.getPatente())
+				: Optional.empty();
 		Optional<Camion> existente = camion.getCodigoExterno() != null
 				? camionDAO.findByCodigoExterno(camion.getCodigoExterno())
 				: conPatente;
@@ -351,7 +361,10 @@ public class OrdenBusiness implements IOrdenBusiness {
 		}
 
 		Camion c = existente.get();
-		c.setPatente(camion.getPatente());
+		// Si la orden no trae patente se conserva la que ya tenía el camión
+		if (camion.getPatente() != null) {
+			c.setPatente(camion.getPatente());
+		}
 		c.setDescripcion(camion.getDescripcion());
 		// Se reemplazan todas las cisternas: clear() + orphanRemoval borra las viejas.
 		// No usar setCisternas(otraLista): con orphanRemoval Hibernate exige conservar la misma lista

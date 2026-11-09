@@ -44,7 +44,7 @@ CREATE TABLE usuario_rol (
 CREATE TABLE camion (
     id             BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
     codigo_externo VARCHAR(50)  NULL,
-    patente        VARCHAR(20)  NOT NULL,
+    patente        VARCHAR(20)  NULL,
     descripcion    VARCHAR(255) NULL,
     CONSTRAINT camion_codigo_externo_unique UNIQUE (codigo_externo),
     CONSTRAINT camion_patente_unique UNIQUE (patente)
